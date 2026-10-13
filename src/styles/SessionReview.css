@@ -1,0 +1,499 @@
+.session-review-page {
+  min-height: 100vh;
+  background: #f5f8fa;
+  color: #172b40;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.session-review-page * {
+  box-sizing: border-box;
+}
+
+.session-review-page button,
+.session-review-page textarea,
+.session-review-page select {
+  font: inherit;
+}
+
+.session-review-page button {
+  cursor: pointer;
+}
+
+.review-header {
+  height: 69px;
+  padding: 0 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #e0e7ed;
+}
+
+.review-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #172b40;
+  text-decoration: none;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+.review-brand-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #0b817a;
+  color: white;
+  font-size: 22px;
+}
+
+.review-back-link {
+  border: none;
+  background: transparent;
+  color: #596b7f;
+  font-size: 14px;
+}
+
+.review-container {
+  width: min(712px, calc(100% - 40px));
+  margin: 48px auto;
+  padding-bottom: 45px;
+}
+
+.review-completion {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.review-success-icon {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  background: #e1f3f0;
+  color: #0b817a;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.review-completion h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.review-completion p {
+  margin: 10px 0 0;
+  color: #5b6d81;
+  font-size: 15px;
+}
+
+.review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.review-stat-card {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid #dfe7ed;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.review-stat-card strong {
+  font-size: 27px;
+  font-weight: 800;
+}
+
+.review-stat-card span {
+  color: #5b6d81;
+  font-size: 13px;
+}
+
+.review-section {
+  margin-bottom: 24px;
+  padding: 23px 24px;
+  border: 1px solid #dfe7ed;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.review-section h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.35px;
+}
+
+.review-confirm-row {
+  min-height: 51px;
+  margin-top: 14px;
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-radius: 13px;
+  background: #f5f8fa;
+  font-size: 14px;
+}
+
+.review-confirm-row > span:first-child {
+  line-height: 1.5;
+}
+
+.review-confirmed-badge {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #e1f3f0;
+  color: #006760;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.review-confirm-button {
+  flex-shrink: 0;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #0b817a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.review-form {
+  margin-bottom: 0;
+}
+
+.review-stars {
+  display: flex;
+  gap: 12px;
+  margin: 2px 0 20px;
+}
+
+.review-star {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #c18400;
+  font-size: 34px;
+  line-height: 1.1;
+  -webkit-text-stroke: 1px #b77c00;
+}
+
+.review-star:not(.selected) {
+  color: #fff;
+}
+
+.review-star:focus-visible,
+.review-tag:focus-visible {
+  outline: 2px solid #0b817a;
+  outline-offset: 3px;
+}
+
+.review-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 17px;
+}
+
+.review-tag {
+  min-height: 36px;
+  padding: 0 15px;
+  border: 1px solid #cbd8e3;
+  border-radius: 22px;
+  background: #fff;
+  color: #263b50;
+  font-size: 12px;
+}
+
+.review-tag.selected {
+  border-color: #0b817a;
+  background: #e1f3f0;
+  color: #006760;
+  font-weight: 700;
+}
+
+.review-form label,
+.report-form label {
+  display: block;
+  margin-bottom: 7px;
+  color: #172b40;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.review-form textarea,
+.report-form select {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #cfdae4;
+  border-radius: 11px;
+  background: #fff;
+  color: #172b40;
+  outline: none;
+}
+
+.review-form textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.review-form textarea:focus,
+.report-form select:focus {
+  border-color: #0b817a;
+  box-shadow: 0 0 0 3px #0b817a18;
+}
+
+.review-notice {
+  margin: 12px 0 0;
+  color: #006760;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.review-primary-button,
+.review-secondary-button {
+  min-height: 56px;
+  padding: 0 26px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.review-primary-button {
+  border: 1px solid #0b817a;
+  background: #0b817a;
+  color: #fff;
+}
+
+.review-primary-button:hover {
+  background: #086d67;
+}
+
+.review-primary-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.review-secondary-button {
+  border: 1px solid #0b817a;
+  background: transparent;
+  color: #0b817a;
+}
+
+.review-report-button {
+  min-height: 48px;
+  padding: 0 18px;
+  border: none;
+  background: transparent;
+  color: #b51f1f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.report-form {
+  margin-top: 24px;
+}
+
+.report-form p {
+  color: #5b6d81;
+  font-size: 14px;
+}
+
+.report-form select {
+  min-height: 46px;
+}
+
+.report-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.report-form-actions .review-primary-button,
+.report-form-actions .review-secondary-button {
+  min-height: 45px;
+}
+
+.review-finished-note {
+  margin-top: 18px;
+  padding: 15px;
+  border-radius: 12px;
+  background: #e1f3f0;
+  color: #006760;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .review-header {
+    height: 62px;
+    padding: 0 16px;
+  }
+
+  .review-brand {
+    font-size: 20px;
+  }
+
+  .review-container {
+    width: calc(100% - 24px);
+    margin: 28px auto;
+  }
+
+  .review-completion h1 {
+    font-size: 28px;
+  }
+
+  .review-stats {
+    gap: 7px;
+  }
+
+  .review-stat-card {
+    min-height: 82px;
+    border-radius: 13px;
+  }
+
+  .review-stat-card strong {
+    font-size: 22px;
+  }
+
+  .review-stat-card span {
+    font-size: 11px;
+  }
+
+  .review-section {
+    padding: 18px 15px;
+    border-radius: 16px;
+  }
+
+  .review-section h2 {
+    font-size: 18px;
+  }
+
+  .review-confirm-row {
+    align-items: flex-start;
+    padding: 12px;
+    font-size: 13px;
+  }
+
+  .review-confirmed-badge {
+    padding: 6px 9px;
+  }
+
+  .review-stars {
+    gap: 8px;
+  }
+
+  .review-star {
+    font-size: 31px;
+  }
+
+  .review-tag {
+    min-height: 34px;
+    padding: 0 11px;
+  }
+
+  .review-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-primary-button,
+  .review-secondary-button {
+    width: 100%;
+  }
+
+  .review-report-button {
+    align-self: center;
+  }
+}
+
+/* Fix invisible text on the Session Review page */
+.session-review-page {
+  color: #172b40 !important;
+  background-color: #f5f8fa;
+}
+
+.session-review-page .review-completion h1 {
+  color: #172b40 !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+.session-review-page .review-completion p {
+  color: #5b6d81 !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+.session-review-page .review-stat-card strong,
+.session-review-page .review-section h2,
+.session-review-page .review-confirm-row,
+.session-review-page .review-confirm-row strong,
+.session-review-page .review-form label {
+  color: #172b40 !important;
+  opacity: 1;
+  visibility: visible;
+}
+
+.session-review-page .review-stat-card span {
+  color: #5b6d81 !important;
+}
+
+.session-review-page .review-section {
+  background-color: #ffffff;
+}
+
+.session-review-page .review-confirm-row {
+  background-color: #f5f8fa;
+}
+
+.session-review-page .review-confirmed-badge {
+  color: #006760 !important;
+}
+
+.session-review-page .review-tag {
+  color: #263b50;
+}
+
+.session-review-page .review-tag.selected {
+  color: #006760 !important;
+}
+
+.session-review-page .review-form textarea {
+  color: #172b40 !important;
+  background-color: #ffffff;
+}
+
+.session-review-page .review-form textarea::placeholder {
+  color: #7b8794;
+  opacity: 1;
+}

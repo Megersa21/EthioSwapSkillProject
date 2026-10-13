@@ -15,6 +15,10 @@ import Profile from './pages/Profile.jsx';
 import EditProfile from './pages/EditProfile.jsx';
 import Notifications from './pages/Notification.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
+import ScheduleSession from './pages/ScheduleSession.jsx';
+import PreJoinSession from './pages/PreJionSession.jsx';
+import LiveSessionRoom from './pages/LiveSessionRoom.jsx';
+import SessionReview from './pages/SessionReview.jsx';
 
 import './App.css';
 
@@ -36,8 +40,11 @@ function App() {
         <Route path="/profile/:id" element={<Profile />} />
         <Route path="/edit-profile" element={<EditProfile />} />
         <Route path="/admin" element={<AdminDashboard />} />
-
+        <Route path="/schedule-session" element={<ScheduleSession />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/pre-join-session" element={<PreJoinSession />} />
+        <Route path="/session-room" element={<LiveSessionRoom />} />
+        <Route path="/session-review" element={<SessionReview />} />
       </Routes>
     </BrowserRouter>
   );

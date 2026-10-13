@@ -644,3 +644,86 @@
   opacity: 1 !important;
   visibility: visible !important;
 }
+
+/* FIX: Suggested Partners and Recent Activity text */
+.dashboard-page .dashboard-bottom-grid,
+.dashboard-page .dashboard-panel {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dashboard-page .dashboard-panel {
+  background: #ffffff !important;
+  color: #14283d !important;
+}
+
+.dashboard-page .panel-heading h2 {
+  color: #14283d !important;
+  -webkit-text-fill-color: #14283d !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dashboard-page .panel-heading a {
+  color: #087f78 !important;
+  -webkit-text-fill-color: #087f78 !important;
+}
+
+/* Suggested partner names */
+.dashboard-page .suggested-partner-info h3 {
+  color: #14283d !important;
+  -webkit-text-fill-color: #14283d !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dashboard-page .suggested-partner {
+  background: #f5f8fa !important;
+}
+
+.dashboard-page .partner-skill-tags span.partner-teaches {
+  background: #e1f3f0 !important;
+  color: #176c68 !important;
+  -webkit-text-fill-color: #176c68 !important;
+}
+
+.dashboard-page .partner-skill-tags span.partner-wants {
+  background: #fff2d5 !important;
+  color: #80580a !important;
+  -webkit-text-fill-color: #80580a !important;
+}
+
+.dashboard-page .mutual-match {
+  background: #14283d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.dashboard-page .view-partner-button {
+  color: #087f78 !important;
+  -webkit-text-fill-color: #087f78 !important;
+}
+
+/* Recent activity descriptions */
+.dashboard-page .activity-item p {
+  color: #24384d !important;
+  -webkit-text-fill-color: #24384d !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dashboard-page .activity-item p a {
+  color: #087f78 !important;
+  -webkit-text-fill-color: #087f78 !important;
+}
+
+.dashboard-page .activity-dot {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.dashboard-page .dashboard-tip {
+  background: #e1f3f0 !important;
+  color: #176c68 !important;
+  -webkit-text-fill-color: #176c68 !important;
+}

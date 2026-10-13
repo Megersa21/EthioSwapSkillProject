@@ -1,0 +1,376 @@
+.prejoin-page {
+  min-height: 100vh;
+  background: #f5f8fa;
+  color: #172b40;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.prejoin-page * {
+  box-sizing: border-box;
+}
+
+.prejoin-header {
+  min-height: 68px;
+  padding: 0 3.8%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #dce5ec;
+}
+
+.prejoin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #172b40;
+  font-size: 23px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.prejoin-brand-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #087f78;
+  color: #fff;
+  font-size: 23px;
+}
+
+.prejoin-back {
+  border: none;
+  background: transparent;
+  color: #5c6d80;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.prejoin-layout {
+  max-width: 1060px;
+  width: calc(100% - 48px);
+  margin: 48px auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  align-items: start;
+  gap: 32px;
+}
+
+.prejoin-preview-column {
+  min-width: 0;
+}
+
+.prejoin-video {
+  height: 420px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #13283d;
+}
+
+.prejoin-preview-label {
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  left: 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #0c1d2d;
+  color: #e5edf5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.prejoin-live-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.prejoin-hidden-video {
+  display: none;
+}
+
+.prejoin-initials {
+  width: 120px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffbd39;
+  color: #13283d;
+  font-size: 40px;
+  font-weight: 800;
+}
+
+.prejoin-video-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+}
+
+.prejoin-video-controls button {
+  width: 52px;
+  height: 52px;
+  border: 1px solid #344c61;
+  border-radius: 50%;
+  background: #1d354b;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.prejoin-video-controls button:hover {
+  background: #29465e;
+}
+
+.prejoin-video-controls button.device-off {
+  background: #b42318;
+  border-color: #b42318;
+}
+
+.prejoin-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.prejoin-status-item {
+  min-height: 51px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #dce5ec;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.prejoin-status-item span {
+  color: #07877f;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.prejoin-status-item p {
+  margin: 0;
+  color: #172b40;
+  font-size: 13px;
+}
+
+.prejoin-status-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.prejoin-settings-card {
+  padding: 29px 30px;
+  border: 1px solid #dce5ec;
+  border-radius: 24px;
+  background: #fff;
+}
+
+.prejoin-settings-card h1 {
+  margin: 0;
+  color: #172b40;
+  font-size: 29px;
+  line-height: 1.25;
+}
+
+.prejoin-time {
+  margin: 3px 0 20px;
+  color: #5c6d80;
+  font-size: 14px;
+}
+
+.prejoin-partner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 21px;
+  padding: 14px;
+  border-radius: 15px;
+  background: #f5f8fa;
+}
+
+.prejoin-partner-avatar {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #087f78;
+  color: #fff;
+  font-weight: 800;
+}
+
+.prejoin-partner h2 {
+  margin: 0 0 4px;
+  color: #172b40;
+  font-size: 14px;
+}
+
+.prejoin-partner p {
+  margin: 0;
+  color: #5c6d80;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.prejoin-label {
+  display: block;
+  margin: 17px 0 7px;
+  color: #172b40;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.prejoin-settings-card select {
+  width: 100%;
+  height: 49px;
+  padding: 0 12px;
+  border: 1px solid #cbd7e2;
+  border-radius: 11px;
+  background: #fff;
+  color: #172b40;
+  font-size: 14px;
+}
+
+.prejoin-settings-card select:focus {
+  outline: 2px solid #087f78;
+  outline-offset: 1px;
+}
+
+.prejoin-audio-level {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.prejoin-audio-level span {
+  width: 6px;
+  height: 7px;
+  border-radius: 2px;
+  background: #cbd7e2;
+}
+
+.prejoin-audio-level span:nth-child(1),
+.prejoin-audio-level span:nth-child(2),
+.prejoin-audio-level span:nth-child(3),
+.prejoin-audio-level span:nth-child(4),
+.prejoin-audio-level span:nth-child(5) {
+  background: #087f78;
+}
+
+.prejoin-audio-level span:nth-child(2) {
+  height: 12px;
+}
+
+.prejoin-audio-level span:nth-child(3) {
+  height: 16px;
+}
+
+.prejoin-audio-level span:nth-child(4) {
+  height: 21px;
+}
+
+.prejoin-audio-level span:nth-child(5) {
+  height: 13px;
+}
+
+.prejoin-join-button {
+  width: 100%;
+  min-height: 54px;
+  margin-top: 20px;
+  border: none;
+  border-radius: 12px;
+  background: #087f78;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.prejoin-join-button:hover {
+  background: #066b66;
+}
+
+.prejoin-join-button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.prejoin-community-note {
+  margin: 19px 0 0;
+  color: #5c6d80;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.prejoin-message {
+  margin: 12px 0 0;
+  color: #a32d24;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 850px) {
+  .prejoin-layout {
+    grid-template-columns: 1fr;
+    max-width: 620px;
+    margin-top: 28px;
+  }
+
+  .prejoin-video {
+    height: 380px;
+  }
+}
+
+@media (max-width: 520px) {
+  .prejoin-header {
+    padding: 12px 16px;
+  }
+
+  .prejoin-brand {
+    font-size: 20px;
+  }
+
+  .prejoin-layout {
+    width: calc(100% - 28px);
+    margin: 22px auto;
+    gap: 20px;
+  }
+
+  .prejoin-video {
+    height: 290px;
+    border-radius: 18px;
+  }
+
+  .prejoin-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prejoin-status-item.full-width {
+    grid-column: auto;
+  }
+
+  .prejoin-settings-card {
+    padding: 22px 18px;
+  }
+
+  .prejoin-settings-card h1 {
+    font-size: 26px;
+  }
+}
