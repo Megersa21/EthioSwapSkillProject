@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import '../styles/Sessions.css';
 
 const initialSessions = [
@@ -8,9 +8,9 @@ const initialSessions = [
     initials: 'DA',
     teachSkill: 'Graphic Design',
     learnSkill: 'Web Development',
-    date: 'Oct 13, 2026',
-    day: 'Today',
-    time: '4:00 PM to 5:00 PM',
+    date: '2026-10-13',
+    startTime: '16:00',
+    endTime: '17:00',
     status: 'Confirmed',
     category: 'upcoming',
     invite: false,
@@ -21,9 +21,9 @@ const initialSessions = [
     initials: 'MB',
     teachSkill: 'JavaScript',
     learnSkill: 'Logo Design',
-    date: 'Oct 17, 2026',
-    day: 'Sat',
-    time: '10:00 AM to 11:00 AM',
+    date: '2026-10-17',
+    startTime: '10:00',
+    endTime: '11:00',
     status: 'Confirmed',
     category: 'upcoming',
     invite: false,
@@ -34,9 +34,9 @@ const initialSessions = [
     initials: 'YT',
     teachSkill: 'Photography',
     learnSkill: 'HTML and CSS',
-    date: 'Oct 18, 2026',
-    day: 'Sun',
-    time: '2:00 PM to 3:00 PM',
+    date: '2026-10-18',
+    startTime: '14:00',
+    endTime: '15:00',
     status: 'Waiting for reply',
     category: 'upcoming',
     invite: true,
@@ -47,9 +47,9 @@ const initialSessions = [
     initials: 'SM',
     teachSkill: 'Flutter',
     learnSkill: 'UI/UX Design',
-    date: 'Oct 5, 2026',
-    day: 'Mon',
-    time: '9:00 AM to 10:00 AM',
+    date: '2026-10-05',
+    startTime: '09:00',
+    endTime: '10:00',
     status: 'Completed',
     category: 'past',
     invite: false,
@@ -60,19 +60,117 @@ const initialSessions = [
     initials: 'HB',
     teachSkill: 'React',
     learnSkill: 'Graphic Design',
-    date: 'Oct 3, 2026',
-    day: 'Sat',
-    time: '2:00 PM to 3:00 PM',
+    date: '2026-10-03',
+    startTime: '14:00',
+    endTime: '15:00',
     status: 'Completed',
     category: 'past',
     invite: false,
   },
 ];
 
+function toISODate(value) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
+function parseLegacyTime(value) {
+  if (!value) return {};
+  const match = value.match(
+    /(\d{1,2}):(\d{2})\s*(AM|PM)\s*to\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i,
+  );
+  if (!match) return {};
+  const convert = (hour, minute, suffix) => {
+    let h = Number(hour) % 12;
+    if (suffix.toUpperCase() === 'PM') h += 12;
+    return `${String(h).padStart(2, '0')}:${minute}`;
+  };
+  return {
+    startTime: convert(match[1], match[2], match[3]),
+    endTime: convert(match[4], match[5], match[6]),
+  };
+}
+
+function normalizeSession(session, index) {
+  const legacy = parseLegacyTime(session.time);
+  return {
+    ...session,
+    id: session.id ?? index + 1,
+    date:
+      toISODate(session.date) || initialSessions[index]?.date || '2026-10-20',
+    startTime:
+      session.startTime ||
+      legacy.startTime ||
+      initialSessions[index]?.startTime ||
+      '10:00',
+    endTime:
+      session.endTime ||
+      legacy.endTime ||
+      initialSessions[index]?.endTime ||
+      '11:00',
+    category: session.category || 'upcoming',
+    invite: Boolean(session.invite),
+  };
+}
+
+function readSessions() {
+  try {
+    const saved = localStorage.getItem('swapSkillSessions');
+    if (!saved) return initialSessions;
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? parsed.map(normalizeSession)
+      : initialSessions;
+  } catch (error) {
+    console.error('Could not load sessions:', error);
+    return initialSessions;
+  }
+}
+
+function formatDate(value) {
+  if (!value) return '';
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+}
+function formatTime(value) {
+  if (!value) return '';
+  const [hours, minutes] = value.split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return value;
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+}
+function formatDay(value) {
+  if (!value) return '';
+  return new Date(`${value}T12:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+  });
+}
+
 function Sessions() {
   const [activeTab, setActiveTab] = useState('upcoming');
-  const [sessions, setSessions] = useState(initialSessions);
+  const [sessions, setSessions] = useState(readSessions);
   const [notice, setNotice] = useState('');
+  const [editingSession, setEditingSession] = useState(null);
+  const [newDate, setNewDate] = useState('');
+  const [newStartTime, setNewStartTime] = useState('');
+  const [newEndTime, setNewEndTime] = useState('');
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('swapSkillSessions', JSON.stringify(sessions));
+    } catch (error) {
+      console.error('Could not save sessions:', error);
+    }
+  }, [sessions]);
 
   const visibleSessions = sessions.filter(
     (session) => session.category === activeTab,
@@ -85,113 +183,88 @@ function Sessions() {
       ),
     );
   }
-
   function cancelSession(session) {
-    if (!window.confirm(`Cancel your session with ${session.partner}?`)) {
-      return;
-    }
-
+    if (!window.confirm(`Cancel your session with ${session.partner}?`)) return;
     updateSession(session.id, { status: 'Cancelled' });
     setNotice(`Your session with ${session.partner} was cancelled.`);
   }
-
-  function rescheduleSession(session) {
-    const newDate = window.prompt(
-      'Enter a new date (for example, Oct 20, 2026):',
-      session.date,
-    );
-
-    if (!newDate || !newDate.trim()) return;
-
-    const newTime = window.prompt(
-      'Enter a new time (for example, 2:00 PM to 3:00 PM):',
-      session.time,
-    );
-
-    if (!newTime || !newTime.trim()) return;
-
-    updateSession(session.id, {
-      date: newDate.trim(),
-      time: newTime.trim(),
-      status: 'Waiting for reply',
-    });
-
-    setNotice('Your proposed session change has been saved in this demo.');
+  function openReschedule(session) {
+    setEditingSession(session);
+    setNewDate(toISODate(session.date));
+    setNewStartTime(session.startTime || '10:00');
+    setNewEndTime(session.endTime || '11:00');
+    setFormError('');
   }
-
-  function withdrawInvite(session) {
-    if (!window.confirm(`Withdraw your invitation to ${session.partner}?`)) {
+  function closeReschedule() {
+    setEditingSession(null);
+    setFormError('');
+  }
+  function saveReschedule(event) {
+    event.preventDefault();
+    if (!editingSession) return;
+    if (!newDate || !newStartTime || !newEndTime) {
+      setFormError('Please fill in the date, start time, and end time.');
       return;
     }
-
+    if (newStartTime >= newEndTime) {
+      setFormError('The end time must be later than the start time.');
+      return;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(`${newDate}T00:00:00`) < today) {
+      setFormError('Please select today or a future date.');
+      return;
+    }
+    updateSession(editingSession.id, {
+      date: newDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      status: 'Waiting for reply',
+    });
+    setNotice(
+      `Your proposed new schedule with ${editingSession.partner} has been saved. It is waiting for their reply.`,
+    );
+    closeReschedule();
+  }
+  function withdrawInvite(session) {
+    if (!window.confirm(`Withdraw your invitation to ${session.partner}?`))
+      return;
     setSessions((current) => current.filter((item) => item.id !== session.id));
     setNotice(`Your invitation to ${session.partner} was withdrawn.`);
   }
-
   function addToCalendar(session) {
     const details = [
       `SwapSkill session with ${session.partner}`,
-      `${session.teachSkill} ↔ ${session.learnSkill}`,
-      `${session.date}, ${session.time}`,
+      `${session.teachSkill} <-> ${session.learnSkill}`,
+      `${formatDate(session.date)}, ${formatTime(session.startTime)} to ${formatTime(session.endTime)}`,
     ].join('\n');
-
     const blob = new Blob([details], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-
     link.href = url;
     link.download = `swapskill-session-${session.id}.ics`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-
-    setNotice(
-      'Calendar file downloaded. You can import it into your calendar.',
-    );
+    setNotice('Calendar details downloaded for your session.');
   }
-
-  function joinRoom(session) {
-    setNotice(
-      `Video rooms are not connected yet. Your session with ${session.partner} is ready for the future video-call feature.`,
-    );
-  }
-
   function scheduleSession() {
     window.location.href = '/schedule-session';
   }
 
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   return (
     <main className="sessions-page">
-      {/* <header className="sessions-navbar">
-        <a className="sessions-brand" href="/">
-          <span className="sessions-brand-icon">⇄</span>
-          <span>SwapSkill</span>
-        </a>
-
-        <nav className="sessions-nav-links" aria-label="Main navigation">
-          <a href="/">Home</a>
-          <a href="/discover">Skills</a>
-          <a href="/requests">Requests</a>
-          <a href="/sessions" className="active">
-            Sessions
-          </a>
-          <a href="/messages">Messages</a>
-        </nav>
-
-        <a className="sessions-user" href="/edit-profile">
-          <span className="sessions-user-avatar">SU</span>
-          <span>Sample User</span>
-        </a>
-      </header> */}
-
       <div className="sessions-container">
         <section className="sessions-heading">
           <div>
             <h1>Video sessions</h1>
             <p>Meet your swap partners live and take turns teaching.</p>
           </div>
-
           <button
             type="button"
             className="sessions-primary-button"
@@ -229,7 +302,6 @@ function Sessions() {
             Upcoming ({sessions.filter((s) => s.category === 'upcoming').length}
             )
           </button>
-
           <button
             type="button"
             role="tab"
@@ -265,23 +337,18 @@ function Sessions() {
             ) : (
               visibleSessions.map((session, index) => (
                 <article
-                  className={`session-card ${
-                    index === 0 && activeTab === 'upcoming'
-                      ? 'session-card-featured'
-                      : ''
-                  }`}
+                  className={`session-card ${index === 0 && activeTab === 'upcoming' ? 'session-card-featured' : ''}`}
                   key={session.id}
                 >
                   <div className="session-card-top">
                     <p className="session-date-line">
                       {index === 0 && activeTab === 'upcoming' ? '▣ ' : ''}
-                      {session.day} · {session.time}
+                      {formatDay(session.date)} · {formatDate(session.date)} ·{' '}
+                      {formatTime(session.startTime)} to{' '}
+                      {formatTime(session.endTime)}
                     </p>
-
                     <span
-                      className={`session-status status-${session.status
-                        .toLowerCase()
-                        .replace(/\s+/g, '-')}`}
+                      className={`session-status status-${session.status.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       {session.status}
                     </span>
@@ -293,7 +360,6 @@ function Sessions() {
                     >
                       {session.initials}
                     </div>
-
                     <div>
                       <h2>
                         {session.teachSkill} ⇄ {session.learnSkill}
@@ -320,22 +386,22 @@ function Sessions() {
 
                   <div className="session-card-actions">
                     {session.category === 'upcoming' &&
-                      session.status !== 'Cancelled' &&
-                      !session.invite && (
+                      session.status !== 'Cancelled' && (
                         <>
-                          {index === 0 && (
-                            <button
-                              type="button"
-                              className="sessions-primary-button"
-                              onClick={() =>
-                                (window.location.href = '/pre-join-session')
-                              }
-                            >
-                              Join room
-                            </button>
-                          )}
-
-                          {index !== 0 && (
+                          {session.status === 'Confirmed' &&
+                            !session.invite &&
+                            index === 0 && (
+                              <button
+                                type="button"
+                                className="sessions-primary-button"
+                                onClick={() => {
+                                  window.location.href = '/pre-join-session';
+                                }}
+                              >
+                                Join room
+                              </button>
+                            )}
+                          {!session.invite && index !== 0 && (
                             <button
                               type="button"
                               className="sessions-outline-teal"
@@ -345,47 +411,46 @@ function Sessions() {
                             </button>
                           )}
 
+                          {/* Reschedule is intentionally shown for every non-cancelled upcoming session. */}
                           <button
                             type="button"
                             className="sessions-outline-button"
-                            onClick={() => rescheduleSession(session)}
+                            onClick={() => openReschedule(session)}
                           >
                             Reschedule
                           </button>
 
-                          <button
-                            type="button"
-                            className="sessions-text-danger"
-                            onClick={() => cancelSession(session)}
-                          >
-                            Cancel
-                          </button>
+                          {!session.invite ? (
+                            <button
+                              type="button"
+                              className="sessions-text-danger"
+                              onClick={() => cancelSession(session)}
+                            >
+                              Cancel
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="sessions-text-danger"
+                              onClick={() => withdrawInvite(session)}
+                            >
+                              Withdraw invite
+                            </button>
+                          )}
                         </>
                       )}
-
-                    {session.invite && session.status !== 'Cancelled' && (
-                      <button
-                        type="button"
-                        className="sessions-text-danger"
-                        onClick={() => withdrawInvite(session)}
-                      >
-                        Withdraw invite
-                      </button>
-                    )}
-
                     {session.status === 'Cancelled' && (
                       <span className="session-cancelled-note">
                         This session has been cancelled.
                       </span>
                     )}
-
                     {session.category === 'past' && (
                       <button
                         type="button"
                         className="sessions-outline-button"
                         onClick={() =>
                           setNotice(
-                            `Session with ${session.partner} took place on ${session.date}.`,
+                            `Session with ${session.partner} took place on ${formatDate(session.date)}.`,
                           )
                         }
                       >
@@ -401,7 +466,6 @@ function Sessions() {
           <aside className="sessions-sidebar">
             <section className="sessions-side-card">
               <h2>This week</h2>
-
               <div className="sessions-week">
                 {[
                   { day: 'Mon', date: '12' },
@@ -413,15 +477,7 @@ function Sessions() {
                   { day: 'Sun', date: '18' },
                 ].map((item) => (
                   <div
-                    className={`sessions-week-day ${
-                      item.day === 'Mon'
-                        ? 'selected'
-                        : item.day === 'Sat'
-                          ? 'weekend'
-                          : item.day === 'Sun'
-                            ? 'sunday'
-                            : ''
-                    }`}
+                    className={`sessions-week-day ${item.day === 'Mon' ? 'selected' : item.day === 'Sat' ? 'weekend' : item.day === 'Sun' ? 'sunday' : ''}`}
                     key={item.day}
                   >
                     <span>{item.day}</span>
@@ -429,12 +485,10 @@ function Sessions() {
                   </div>
                 ))}
               </div>
-
               <p className="sessions-timezone">
                 Times are shown in East Africa Time (UTC+3).
               </p>
             </section>
-
             <section className="sessions-side-card sessions-checklist">
               <h2>Before you join</h2>
               <ul>
@@ -446,6 +500,91 @@ function Sessions() {
           </aside>
         </div>
       </div>
+
+      {editingSession && (
+        <div
+          className="reschedule-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeReschedule();
+          }}
+        >
+          <section
+            className="reschedule-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reschedule-title"
+          >
+            <button
+              type="button"
+              className="reschedule-close"
+              aria-label="Close reschedule form"
+              onClick={closeReschedule}
+            >
+              ×
+            </button>
+            <span className="reschedule-icon">▦</span>
+            <h2 id="reschedule-title">Reschedule session</h2>
+            <p className="reschedule-description">
+              Choose a new date and time for your session with{' '}
+              <strong>{editingSession.partner}</strong>.
+            </p>
+            <form onSubmit={saveReschedule} className="reschedule-form">
+              <label htmlFor="reschedule-date">New date</label>
+              <input
+                id="reschedule-date"
+                type="date"
+                value={newDate}
+                min={todayISO}
+                onChange={(event) => setNewDate(event.target.value)}
+                required
+              />
+              <div className="reschedule-time-grid">
+                <div>
+                  <label htmlFor="reschedule-start">Start time</label>
+                  <input
+                    id="reschedule-start"
+                    type="time"
+                    value={newStartTime}
+                    onChange={(event) => setNewStartTime(event.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="reschedule-end">End time</label>
+                  <input
+                    id="reschedule-end"
+                    type="time"
+                    value={newEndTime}
+                    onChange={(event) => setNewEndTime(event.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              {formError && (
+                <p className="reschedule-error" role="alert">
+                  {formError}
+                </p>
+              )}
+              <p className="reschedule-note">
+                Your proposed change will be marked as waiting for your
+                partner's reply.
+              </p>
+              <div className="reschedule-actions">
+                <button
+                  type="button"
+                  className="sessions-outline-button"
+                  onClick={closeReschedule}
+                >
+                  Close
+                </button>
+                <button type="submit" className="sessions-primary-button">
+                  Save changes
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

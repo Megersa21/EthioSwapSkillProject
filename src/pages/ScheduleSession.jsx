@@ -110,7 +110,7 @@ function ScheduleSession() {
 
   return (
     <main className="schedule-page">
-      <header className="schedule-navbar">
+      {/* <header className="schedule-navbar">
         <a className="schedule-brand" href="/">
           <span className="schedule-brand-icon">⇄</span>
           <span>SwapSkill</span>
@@ -130,7 +130,7 @@ function ScheduleSession() {
           <span className="schedule-user-avatar">SU</span>
           <span>Sample User</span>
         </a>
-      </header>
+      </header> */}
 
       <div className="schedule-container">
         <a className="schedule-back-link" href="/sessions">
