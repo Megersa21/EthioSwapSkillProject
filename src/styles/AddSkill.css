@@ -1,0 +1,249 @@
+.add-skill-page {
+  min-height: 100vh;
+  padding: 35px 20px 70px;
+  background: #f5f8fa;
+  color: #14283d;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.add-skill-page * {
+  box-sizing: border-box;
+}
+
+.add-skill-container {
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.add-skill-back {
+  display: inline-block;
+  margin-bottom: 25px;
+  color: #087f78;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.add-skill-back:hover {
+  text-decoration: underline;
+}
+
+.add-skill-heading {
+  margin-bottom: 28px;
+}
+
+.add-skill-eyebrow {
+  color: #087f78;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.add-skill-heading h1 {
+  margin: 10px 0;
+  color: #14283d;
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.7px;
+}
+
+.add-skill-heading p {
+  max-width: 600px;
+  margin: 0;
+  color: #607086;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.add-skill-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.skill-form-section {
+  padding: 26px;
+  border: 1px solid #dce5ec;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.skill-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 24px;
+}
+
+.skill-section-icon {
+  display: grid;
+  flex: 0 0 43px;
+  width: 43px;
+  height: 43px;
+  place-items: center;
+  border-radius: 12px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.teach-icon {
+  background: #e1f3f0;
+  color: #087f78;
+}
+
+.learn-icon {
+  background: #fff2d5;
+  color: #956509;
+}
+
+.availability-icon {
+  background: #e9edff;
+  color: #5c60a7;
+}
+
+.skill-section-heading h2 {
+  margin: 0 0 5px;
+  color: #14283d;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.skill-section-heading p {
+  margin: 0;
+  color: #607086;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.add-skill-field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 19px;
+}
+
+.add-skill-field label {
+  color: #26394d;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.add-skill-field input,
+.add-skill-field textarea,
+.add-skill-field select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d8e1e8;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #14283d;
+  font: inherit;
+  font-size: 14px;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.add-skill-field input::placeholder,
+.add-skill-field textarea::placeholder {
+  color: #94a3b8;
+}
+
+.add-skill-field input:focus,
+.add-skill-field textarea:focus,
+.add-skill-field select:focus {
+  border-color: #087f78;
+  box-shadow: 0 0 0 3px rgba(8, 127, 120, 0.1);
+}
+
+.add-skill-field textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.add-skill-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff0f0;
+  color: #b42318;
+  font-size: 13px;
+}
+
+.add-skill-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.cancel-skill-button,
+.save-skill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cancel-skill-button {
+  border: 1px solid #d8e1e8;
+  background: white;
+  color: #405267;
+}
+
+.cancel-skill-button:hover {
+  background: #f1f5f9;
+}
+
+.save-skill-button {
+  border: 1px solid #087f78;
+  background: #087f78;
+  color: white;
+}
+
+.save-skill-button:hover {
+  background: #066a64;
+}
+
+.add-skill-note {
+  margin: 0;
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .add-skill-page {
+    padding: 24px 14px 45px;
+  }
+
+  .skill-form-section {
+    padding: 20px 16px;
+  }
+
+  .skill-section-heading {
+    align-items: flex-start;
+  }
+
+  .skill-section-heading h2 {
+    font-size: 16px;
+  }
+
+  .add-skill-actions {
+    flex-direction: column-reverse;
+  }
+
+  .cancel-skill-button,
+  .save-skill-button {
+    width: 100%;
+  }
+}

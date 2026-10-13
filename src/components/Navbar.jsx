@@ -11,9 +11,11 @@ export default function Navbar() {
           <span>EthioSwapSkill</span>
         </Link>
         <div className="nav-links">
+          <Link to="/home">Home</Link>
           <a href="#categories">Browse skills</a>
           <a href="#how-it-works">How it works</a>
           <a href="#categories">Categories</a>
+          <Link to="/discover">Discover</Link>
         </div>
         <div className="nav-actions">
           <Link className="button button-outline button-small" to="/login">

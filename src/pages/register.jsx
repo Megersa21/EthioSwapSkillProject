@@ -1,59 +1,156 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import '../styles/Auth.css';
 
 export default function Register() {
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [error, setError] = useState('');
+
   function handleSubmit(event) {
     event.preventDefault();
+    setError('');
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please try again.');
+      return;
+    }
+
+    if (!agreeToTerms) {
+      setError('Please agree to the community rules and privacy terms.');
+      return;
+    }
+
     window.alert(
-      'The registration interface is ready. Account creation will be connected when the backend is built.',
+      'Your registration form is working. Account creation will be connected when we build the backend.',
     );
   }
+
   return (
     <main className="auth-page">
-      <section className="auth-card">
+      <section className="auth-card register-card">
         <Link className="auth-brand" to="/">
-          ⇄ SwapSkill
+          <span className="auth-brand-icon">⇄</span>
+          SwapSkill
         </Link>
-        <h1>Create your account</h1>
-        <p className="auth-subtitle">
-          Join a community where everyone has something to teach.
-        </p>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="full-name">Full name</label>
-          <input
-            id="full-name"
-            type="text"
-            placeholder="Enter your full name"
-            autoComplete="name"
-            required
-          />
-          <label htmlFor="register-email">Email address</label>
-          <input
-            id="register-email"
-            type="email"
-            placeholder="Enter your email"
-            autoComplete="email"
-            required
-          />
-          <label htmlFor="register-password">Password</label>
-          <input
-            id="register-password"
-            type="password"
-            placeholder="Create a password"
-            autoComplete="new-password"
-            minLength={6}
-            required
-          />
+
+        <div className="auth-heading">
+          <h1>Create your account</h1>
+          <p className="auth-subtitle">
+            Join a community where everyone has something to teach.
+          </p>
+        </div>
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="auth-field">
+            <label htmlFor="full-name">Full name</label>
+            <input
+              id="full-name"
+              name="fullName"
+              type="text"
+              placeholder="Enter your full name"
+              autoComplete="name"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              required
+            />
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="register-email">Email address</label>
+            <input
+              id="register-email"
+              name="email"
+              type="email"
+              placeholder="Enter your email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="register-password">Password</label>
+            <div className="auth-password-wrapper">
+              <input
+                id="register-password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Create a password"
+                autoComplete="new-password"
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+
+              <button
+                className="auth-password-toggle"
+                type="button"
+                onClick={() => setShowPassword((previous) => !previous)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          <div className="auth-field">
+            <label htmlFor="confirm-password">Confirm password</label>
+            <input
+              id="confirm-password"
+              name="confirmPassword"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter your password again"
+              autoComplete="new-password"
+              minLength={6}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+            />
+          </div>
+
+          <label className="auth-terms">
+            <input
+              type="checkbox"
+              checked={agreeToTerms}
+              onChange={(event) => setAgreeToTerms(event.target.checked)}
+              required
+            />
+            <span>I agree to the community rules and privacy terms.</span>
+          </label>
+
+          {error && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+
           <button className="auth-button" type="submit">
             Create account
           </button>
         </form>
+
+        <div className="auth-divider">
+          <span>Already part of SwapSkill?</span>
+        </div>
+
         <p className="auth-switch">
           Already have an account? <Link to="/login">Log in</Link>
         </p>
+
         <Link className="back-home" to="/">
           ← Back to home
         </Link>
+
+        <p className="auth-footer-note">
+          Share your skills. Learn from each other.
+        </p>
       </section>
     </main>
   );

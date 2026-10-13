@@ -6,92 +6,355 @@
   background: #f6f8fa;
   color: #142b3d;
 }
+
 .auth-card {
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
   padding: 38px;
   border: 1px solid #e0e7eb;
   border-radius: 19px;
-  background: #fff;
+  background: #ffffff;
   box-shadow: 0 12px 35px rgba(20, 43, 61, 0.08);
 }
+
+/* Brand */
+
 .auth-brand {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 26px;
   color: #087f78;
   text-decoration: none;
   font-size: 20px;
   font-weight: 800;
 }
-.auth-card h1 {
-  margin: 0 0 9px;
-  font-size: 29px;
-  letter-spacing: -0.7px;
+
+.auth-brand-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #e0f2ef;
+  color: #087f78;
+  font-size: 24px;
 }
+
+/* Visible page headings */
+
+.auth-heading {
+  display: block;
+  margin-bottom: 25px;
+}
+
+.auth-card h1,
+.auth-heading h1 {
+  margin: 0 0 9px;
+  color: #142b3d !important;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
 .auth-subtitle {
-  margin: 0 0 25px;
+  margin: 0;
   color: #596978;
   font-size: 13px;
   line-height: 1.6;
 }
-.auth-card form {
+
+/* Form layout */
+
+.auth-card form,
+.auth-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 17px;
 }
-.auth-card label {
-  margin-top: 5px;
+
+/* Put each label beside its input */
+
+.auth-field {
+  display: grid;
+  grid-template-columns: 125px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 5px;
+}
+
+.auth-field > label,
+.auth-label-row > label {
+  margin: 0;
+  color: #142b3d;
   font-size: 12px;
   font-weight: 700;
+  line-height: 1.5;
 }
-.auth-card input {
+
+/* Input fields */
+
+.auth-card input:not([type='checkbox']) {
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 0 13px;
   border: 1px solid #d6e0e6;
   border-radius: 8px;
   outline: none;
   color: #142b3d;
-  background: #fff;
+  background: #ffffff;
+  font-family: inherit;
   font-size: 13px;
 }
+
+.auth-card input::placeholder {
+  color: #8995a2;
+  opacity: 1;
+}
+
 .auth-card input:focus {
   border-color: #087f78;
   box-shadow: 0 0 0 3px rgba(8, 127, 120, 0.12);
 }
-.auth-button {
-  min-height: 44px;
-  margin-top: 10px;
-  border: 0;
-  border-radius: 8px;
-  background: #087f78;
-  color: white;
+
+/* Password row */
+
+.auth-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auth-small-link {
+  color: #087f78;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-small-link:hover,
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
+.auth-password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.auth-password-wrapper input {
+  padding-right: 58px !important;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: #087f78;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
 }
+
+/* Keep the password input aligned with other inputs */
+
+.auth-field:has(.auth-password-wrapper) {
+  align-items: start;
+}
+
+.auth-field:has(.auth-password-wrapper) > label {
+  padding-top: 14px;
+}
+
+.auth-password-wrapper {
+  width: 100%;
+}
+
+/* Forgot password label row */
+
+.auth-field:has(.auth-label-row) {
+  align-items: start;
+}
+
+.auth-label-row {
+  min-height: 44px;
+}
+
+.auth-label-row > label {
+  padding-top: 14px;
+}
+
+/* Registration hint */
+
+.auth-hint {
+  grid-column: 2;
+  margin: -1px 0 0;
+  color: #7a8492;
+  font-size: 11px;
+}
+
+/* Terms checkbox */
+
+.auth-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  color: #526078;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.auth-terms input[type='checkbox'] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 2px 0 0;
+  accent-color: #087f78;
+  cursor: pointer;
+}
+
+/* Error message */
+
+.auth-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff0f0;
+  color: #b42318;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Main button */
+
+.auth-button {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 3px;
+  border: 0;
+  border-radius: 8px;
+  background: #087f78;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
 .auth-button:hover {
   background: #066d67;
 }
+
+/* Links below the form */
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  color: #7a8492;
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e8eaf0;
+}
+
 .auth-switch {
-  margin: 23px 0 0;
+  margin: 20px 0 0;
   color: #596978;
   text-align: center;
   font-size: 12px;
 }
+
 .auth-switch a,
 .back-home {
   color: #087f78;
   font-weight: 700;
   text-decoration: none;
 }
+
 .back-home {
   display: block;
   margin-top: 20px;
   text-align: center;
   font-size: 12px;
 }
+
+.auth-footer-note {
+  margin-top: 24px;
+  color: #7a8492;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Registration card */
+
+.register-card {
+  max-width: 500px;
+}
+
+/* Responsive layout */
+
 @media (max-width: 480px) {
   .auth-card {
-    padding: 28px 22px;
+    padding: 28px 20px;
   }
+
+  .auth-field {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+
+  .auth-field:has(.auth-password-wrapper) > label {
+    padding-top: 0;
+  }
+
+  .auth-label-row {
+    min-height: auto;
+    align-items: center;
+  }
+
+  .auth-label-row > label {
+    padding-top: 0;
+  }
+
+  .auth-hint {
+    grid-column: 1;
+  }
+}
+
+.auth-forgot-bottom {
+  display: block;
+  margin-top: 8px;
+  color: #087f78;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.auth-forgot-bottom:hover {
+  text-decoration: underline;
 }
