@@ -56,36 +56,6 @@ const activities = [
 function Dashboard() {
   return (
     <div className="dashboard-page">
-      <header className="dashboard-navbar">
-        <Link to="/dashboard" className="dashboard-brand">
-          <span className="dashboard-brand-icon">⇄</span>
-          <span>EthioSwapSkill</span>
-        </Link>
-
-        <nav className="dashboard-nav-links">
-          <Link to="/dashboard" className="dashboard-nav-link active">
-            Home
-          </Link>
-          <Link to="/discover" className="dashboard-nav-link">
-            Skills
-          </Link>
-          <Link to="/requests" className="dashboard-nav-link">
-            Requests
-          </Link>
-          <Link to="/sessions" className="dashboard-nav-link">
-            Sessions
-          </Link>
-          <Link to="/messages" className="dashboard-nav-link">
-            Messages
-          </Link>
-        </nav>
-
-        <Link to="/profile" className="dashboard-user">
-          <span className="dashboard-user-avatar">SU</span>
-          <span>Sample User</span>
-        </Link>
-      </header>
-
       <main className="dashboard-main">
         <section className="dashboard-welcome">
           <div>

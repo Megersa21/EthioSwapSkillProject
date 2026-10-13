@@ -138,8 +138,6 @@ export default function Discover() {
 
   return (
     <>
-      <Navbar />
-
       <main className="discover-page">
         <section className="discover-heading">
           <span className="discover-eyebrow">YOUR NEXT SKILL STARTS HERE</span>

@@ -8,12 +8,17 @@ import Discover from './pages/Discover.jsx';
 import Dashboard from './pages/Dashboar.jsx';
 import AddSkill from './pages/AddSkill.jsx';
 import Requests from './pages/Request.jsx';
+import Sessions from './pages/Sessions.jsx';
+import Messages from './pages/Messages.jsx';
+import Navbar from './components/Navbar.jsx';
+import Profile from './pages/Profile.jsx';
 
 import './App.css';
 
 function App() {
   return (
     <BrowserRouter>
+      <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -23,6 +28,9 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/add-skill" element={<AddSkill />} />
         <Route path="/requests" element={<Requests />} />
+        <Route path="/sessions" element={<Sessions />} />
+        <Route path="/messages" element={<Messages />} />
+        <Route path="/profile/:id" element={<Profile />} />
       </Routes>
     </BrowserRouter>
   );

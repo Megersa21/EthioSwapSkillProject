@@ -39,8 +39,6 @@ const categories = [
 export default function Home() {
   return (
     <div className="home-page">
-      <Navbar />
-
       <main>
         {/* Hero section */}
         <section className="hero page-width">

@@ -1,0 +1,265 @@
+.profile-page {
+  min-height: 100vh;
+  padding: 38px 7%;
+  background: #f5f8fa;
+  color: #14283d;
+}
+
+.profile-back-link {
+  display: inline-block;
+  margin-bottom: 22px;
+  color: #087f78;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.profile-back-link:hover {
+  text-decoration: underline;
+}
+
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 32px;
+  border: 1px solid #e4ebf0;
+  border-radius: 17px;
+  background: #ffffff;
+}
+
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  flex-shrink: 0;
+  border: 5px solid #e4f5f2;
+  border-radius: 50%;
+  background: #087f78;
+  color: #ffffff;
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.profile-hero-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-label {
+  color: #087f78;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.profile-hero-info h1 {
+  margin: 8px 0;
+  color: #14283d;
+  font-size: clamp(25px, 3vw, 34px);
+}
+
+.profile-title {
+  margin: 0 0 8px;
+  color: #526276;
+  font-weight: 600;
+}
+
+.profile-location {
+  margin: 0 0 15px;
+  color: #718096;
+  font-size: 14px;
+}
+
+.profile-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-badges span {
+  padding: 7px 10px;
+  border-radius: 20px;
+  background: #edf8f6;
+  color: #087f78;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 170px;
+}
+
+.profile-request-button,
+.profile-message-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 43px;
+  box-sizing: border-box;
+  padding: 11px 15px;
+  border: 1px solid #087f78;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.profile-request-button {
+  background: #087f78;
+  color: #ffffff;
+}
+
+.profile-request-button:hover:not(:disabled) {
+  background: #066b65;
+}
+
+.profile-request-button:disabled {
+  background: #dcefeb;
+  color: #087f78;
+  cursor: default;
+}
+
+.profile-message-button {
+  background: #ffffff;
+  color: #087f78;
+}
+
+.profile-message-button:hover {
+  background: #edf8f6;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 22px;
+}
+
+.profile-card {
+  padding: 26px;
+  border: 1px solid #e4ebf0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.profile-card h2 {
+  margin: 0 0 15px;
+  color: #14283d;
+  font-size: 19px;
+}
+
+.profile-about {
+  grid-column: 1 / -1;
+}
+
+.profile-about > p {
+  max-width: 850px;
+  margin: 0 0 24px;
+  color: #607086;
+  line-height: 1.8;
+}
+
+.profile-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 17px;
+  border-top: 1px solid #edf1f4;
+  font-size: 14px;
+}
+
+.profile-detail span {
+  color: #718096;
+}
+
+.profile-detail strong {
+  color: #14283d;
+}
+
+.profile-section-description {
+  margin: -5px 0 20px;
+  color: #718096;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.profile-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.profile-skill {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-skill.teach {
+  background: #e4f5f2;
+  color: #087f78;
+}
+
+.profile-skill.learn {
+  background: #fff4d8;
+  color: #91630a;
+}
+
+@media (max-width: 900px) {
+  .profile-page {
+    padding: 30px 5%;
+  }
+
+  .profile-hero {
+    flex-wrap: wrap;
+    padding: 24px;
+  }
+
+  .profile-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .profile-actions > * {
+    flex: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .profile-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .profile-avatar {
+    width: 85px;
+    height: 85px;
+    font-size: 25px;
+  }
+
+  .profile-actions {
+    flex-direction: column;
+  }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-about {
+    grid-column: auto;
+  }
+
+  .profile-card {
+    padding: 20px;
+  }
+}
