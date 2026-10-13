@@ -1,0 +1,254 @@
+.edit-profile-page {
+  min-height: 100vh;
+  padding: 42px 7%;
+  background: #f5f8fa;
+  color: #14283d;
+}
+
+.edit-profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.edit-profile-eyebrow {
+  margin: 0 0 9px;
+  color: #087f78;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+
+.edit-profile-heading h1 {
+  margin: 0 0 9px;
+  color: #14283d;
+  font-size: clamp(28px, 4vw, 36px);
+}
+
+.edit-profile-heading > div > p:last-child {
+  margin: 0;
+  color: #607086;
+  line-height: 1.6;
+}
+
+.edit-profile-back {
+  flex-shrink: 0;
+  color: #087f78;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.edit-profile-form {
+  display: grid;
+  gap: 20px;
+}
+
+.edit-profile-card {
+  padding: 28px;
+  border: 1px solid #e4ebf0;
+  border-radius: 15px;
+  background: #ffffff;
+}
+
+.edit-profile-card h2 {
+  margin: 0 0 8px;
+  color: #14283d;
+  font-size: 20px;
+}
+
+.edit-profile-description {
+  margin: 0 0 23px;
+  color: #718096;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.edit-profile-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.edit-profile-fields label,
+.edit-profile-availability {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  color: #34465a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.edit-profile-fields input,
+.edit-profile-fields select,
+.edit-profile-fields textarea,
+.edit-profile-availability select,
+.edit-profile-skill-input input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid #d5dee6;
+  border-radius: 9px;
+  outline: none;
+  background: #ffffff;
+  color: #14283d;
+  font: inherit;
+  font-size: 14px;
+}
+
+.edit-profile-fields textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.edit-profile-fields input:focus,
+.edit-profile-fields select:focus,
+.edit-profile-fields textarea:focus,
+.edit-profile-availability select:focus,
+.edit-profile-skill-input input:focus {
+  border-color: #087f78;
+  box-shadow: 0 0 0 3px rgb(8 127 120 / 9%);
+}
+
+.edit-profile-full-width {
+  grid-column: 1 / -1;
+}
+
+.edit-profile-skill-input {
+  display: flex;
+  gap: 12px;
+}
+
+.edit-profile-skill-input button {
+  flex-shrink: 0;
+  padding: 0 18px;
+  border: none;
+  border-radius: 9px;
+  background: #087f78;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.edit-profile-skill-input button:hover {
+  background: #066b65;
+}
+
+.edit-profile-skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.edit-profile-skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.edit-profile-skill.teach {
+  background: #e4f5f2;
+  color: #087f78;
+}
+
+.edit-profile-skill.learn {
+  background: #fff4d8;
+  color: #91630a;
+}
+
+.edit-profile-skill button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.edit-profile-availability {
+  max-width: 400px;
+}
+
+.edit-profile-success {
+  margin: 0;
+  color: #087f78;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.edit-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.edit-profile-cancel,
+.edit-profile-save {
+  padding: 13px 22px;
+  border-radius: 9px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.edit-profile-cancel {
+  border: 1px solid #d5dee6;
+  background: #ffffff;
+  color: #526276;
+}
+
+.edit-profile-save {
+  border: 1px solid #087f78;
+  background: #087f78;
+  color: #ffffff;
+}
+
+.edit-profile-save:hover {
+  background: #066b65;
+}
+
+@media (max-width: 650px) {
+  .edit-profile-page {
+    padding: 28px 5%;
+  }
+
+  .edit-profile-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .edit-profile-card {
+    padding: 20px;
+  }
+
+  .edit-profile-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .edit-profile-full-width {
+    grid-column: auto;
+  }
+
+  .edit-profile-skill-input {
+    flex-direction: column;
+  }
+
+  .edit-profile-skill-input button {
+    min-height: 43px;
+  }
+
+  .edit-profile-actions > button {
+    flex: 1;
+  }
+}

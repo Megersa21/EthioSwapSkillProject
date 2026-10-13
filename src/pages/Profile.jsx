@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import '../styles/Profile.css';
 
 const sampleProfiles = {
@@ -44,45 +44,113 @@ const sampleProfiles = {
   },
 };
 
+function readSavedProfile() {
+  try {
+    const saved = localStorage.getItem('swapSkillMyProfile');
+    return saved ? JSON.parse(saved) : null;
+  } catch (error) {
+    console.error('Could not load saved profile:', error);
+    return null;
+  }
+}
+
+function getInitials(name = '') {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('') || 'U'
+  );
+}
+
 function Profile() {
   const { id } = useParams();
-  const profile = sampleProfiles[id] || sampleProfiles[1];
+  const isOwnProfile = id === 'me';
+
+  const [savedProfile, setSavedProfile] = useState(readSavedProfile);
   const [requestSent, setRequestSent] = useState(false);
 
-  function sendRequest() {
-    const existingRequests = JSON.parse(
-      localStorage.getItem('swapSkillRequests') || '[]',
-    );
+  useEffect(() => {
+    function refreshProfile() {
+      setSavedProfile(readSavedProfile());
+    }
 
-    const newRequest = {
-      id: Date.now(),
-      partner: profile.name,
-      partnerId: id,
-      teachSkill: profile.learnSkills[0] || 'Skill exchange',
-      learnSkill: profile.teachSkills[0] || 'Skill exchange',
-      status: 'Pending',
-      direction: 'sent',
+    window.addEventListener('focus', refreshProfile);
+    window.addEventListener('storage', refreshProfile);
+
+    return () => {
+      window.removeEventListener('focus', refreshProfile);
+      window.removeEventListener('storage', refreshProfile);
     };
+  }, []);
 
-    localStorage.setItem(
-      'swapSkillRequests',
-      JSON.stringify([...existingRequests, newRequest]),
-    );
+  const profile =
+    isOwnProfile && savedProfile
+      ? {
+          ...savedProfile,
+          initials: getInitials(savedProfile.name),
+          teachSkills: Array.isArray(savedProfile.teachSkills)
+            ? savedProfile.teachSkills
+            : [],
+          learnSkills: Array.isArray(savedProfile.learnSkills)
+            ? savedProfile.learnSkills
+            : [],
+          sessions: savedProfile.sessions ?? 0,
+          rating: savedProfile.rating ?? 'New',
+        }
+      : sampleProfiles[id] || sampleProfiles[1];
 
-    setRequestSent(true);
+  function sendRequest() {
+    try {
+      const stored = localStorage.getItem('swapSkillRequests');
+      const existingRequests = stored ? JSON.parse(stored) : [];
+
+      if (!Array.isArray(existingRequests)) {
+        throw new Error('Saved requests data is invalid.');
+      }
+
+      const newRequest = {
+        id: Date.now(),
+        partner: profile.name,
+        partnerId: id,
+        teachSkill: profile.learnSkills[0] || 'Skill exchange',
+        learnSkill: profile.teachSkills[0] || 'Skill exchange',
+        status: 'Pending',
+        direction: 'sent',
+      };
+
+      localStorage.setItem(
+        'swapSkillRequests',
+        JSON.stringify([...existingRequests, newRequest]),
+      );
+
+      setRequestSent(true);
+    } catch (error) {
+      console.error('Could not save skill swap request:', error);
+      alert('Could not save your request. Please try again.');
+    }
   }
 
   return (
     <main className="profile-page">
-      <Link to="/discover" className="profile-back-link">
-        ← Back to Discover
+      <Link
+        to={isOwnProfile ? '/dashboard' : '/discover'}
+        className="profile-back-link"
+      >
+        {isOwnProfile ? '← Back to Dashboard' : '← Back to Discover'}
       </Link>
 
       <section className="profile-hero">
         <div className="profile-avatar">{profile.initials}</div>
 
         <div className="profile-hero-info">
-          <span className="profile-label">SKILL SWAP MEMBER</span>
+          <span className="profile-label">
+            {isOwnProfile ? 'YOUR PROFILE' : 'SKILL SWAP MEMBER'}
+          </span>
+
           <h1>{profile.name}</h1>
           <p className="profile-title">{profile.title}</p>
           <p className="profile-location">📍 {profile.location}</p>
@@ -95,29 +163,37 @@ function Profile() {
         </div>
 
         <div className="profile-actions">
-          <button
-            type="button"
-            onClick={sendRequest}
-            disabled={requestSent}
-            className="profile-request-button"
-          >
-            {requestSent ? 'Request Sent ✓' : 'Request Skill Swap'}
-          </button>
+          {isOwnProfile ? (
+            <Link to="/edit-profile" className="profile-request-button">
+              Edit Profile
+            </Link>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={sendRequest}
+                disabled={requestSent}
+                className="profile-request-button"
+              >
+                {requestSent ? 'Request Sent ✓' : 'Request Skill Swap'}
+              </button>
 
-          <Link to="/messages" className="profile-message-button">
-            Message
-          </Link>
+              <Link to="/messages" className="profile-message-button">
+                Message
+              </Link>
+            </>
+          )}
         </div>
       </section>
 
       <div className="profile-grid">
         <section className="profile-card profile-about">
           <h2>About Me</h2>
-          <p>{profile.bio}</p>
+          <p>{profile.bio || 'No biography added yet.'}</p>
 
           <div className="profile-detail">
             <span>Availability</span>
-            <strong>{profile.availability}</strong>
+            <strong>{profile.availability || 'Not specified'}</strong>
           </div>
         </section>
 
@@ -128,11 +204,15 @@ function Profile() {
           </p>
 
           <div className="profile-skills">
-            {profile.teachSkills.map((skill) => (
-              <span className="profile-skill teach" key={skill}>
-                {skill}
-              </span>
-            ))}
+            {profile.teachSkills.length > 0 ? (
+              profile.teachSkills.map((skill) => (
+                <span className="profile-skill teach" key={skill}>
+                  {skill}
+                </span>
+              ))
+            ) : (
+              <p>No teaching skills added yet.</p>
+            )}
           </div>
         </section>
 
@@ -143,11 +223,15 @@ function Profile() {
           </p>
 
           <div className="profile-skills">
-            {profile.learnSkills.map((skill) => (
-              <span className="profile-skill learn" key={skill}>
-                {skill}
-              </span>
-            ))}
+            {profile.learnSkills.length > 0 ? (
+              profile.learnSkills.map((skill) => (
+                <span className="profile-skill learn" key={skill}>
+                  {skill}
+                </span>
+              ))
+            ) : (
+              <p>No learning skills added yet.</p>
+            )}
           </div>
         </section>
       </div>

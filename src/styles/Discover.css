@@ -458,3 +458,71 @@
     max-width: 65%;
   }
 }
+
+/* Send skill-swap request */
+.partner-request-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #087f78;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.partner-request-button:hover:not(:disabled) {
+  background: #066861;
+  transform: translateY(-1px);
+}
+
+.partner-request-button:disabled {
+  background: #e7eeee;
+  color: #526565;
+  cursor: not-allowed;
+}
+
+.discover-feedback {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #eaf7f3;
+  color: #176b55;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.partner-request-button {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #087f78;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+.partner-request-button:hover {
+  background: #066861;
+}
+
+.discover-feedback {
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #eaf7f3;
+  color: #176b55;
+  font-size: 14px;
+  line-height: 1.5;
+}

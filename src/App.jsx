@@ -12,6 +12,9 @@ import Sessions from './pages/Sessions.jsx';
 import Messages from './pages/Messages.jsx';
 import Navbar from './components/Navbar.jsx';
 import Profile from './pages/Profile.jsx';
+import EditProfile from './pages/EditProfile.jsx';
+import Notifications from './pages/Notification.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
 
 import './App.css';
 
@@ -31,6 +34,10 @@ function App() {
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/messages" element={<Messages />} />
         <Route path="/profile/:id" element={<Profile />} />
+        <Route path="/edit-profile" element={<EditProfile />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+
+        <Route path="/notifications" element={<Notifications />} />
       </Routes>
     </BrowserRouter>
   );

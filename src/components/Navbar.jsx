@@ -1,9 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import '../styles/Navbar.css';
 
+const defaultUnreadCount = 2;
+
+function getUnreadCount() {
+  try {
+    const saved = localStorage.getItem('swapSkillNotifications');
+
+    if (saved === null) {
+      return defaultUnreadCount;
+    }
+
+    const notifications = JSON.parse(saved);
+
+    if (!Array.isArray(notifications)) {
+      return 0;
+    }
+
+    return notifications.filter((notification) => !notification.read).length;
+  } catch {
+    return 0;
+  }
+}
+
 function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(getUnreadCount);
+
+  useEffect(() => {
+    function updateUnreadCount() {
+      setUnreadCount(getUnreadCount());
+    }
+
+    window.addEventListener('swapSkillNotificationsUpdated', updateUnreadCount);
+    window.addEventListener('storage', updateUnreadCount);
+    window.addEventListener('focus', updateUnreadCount);
+
+    return () => {
+      window.removeEventListener(
+        'swapSkillNotificationsUpdated',
+        updateUnreadCount,
+      );
+      window.removeEventListener('storage', updateUnreadCount);
+      window.removeEventListener('focus', updateUnreadCount);
+    };
+  }, []);
 
   const navItems = [
     { label: 'Home', path: '/' },
@@ -49,6 +91,30 @@ function Navbar() {
             {item.label}
           </NavLink>
         ))}
+
+        <NavLink
+          to="/notifications"
+          onClick={closeMenu}
+          aria-label={
+            unreadCount > 0
+              ? `Notifications, ${unreadCount} unread`
+              : 'Notifications'
+          }
+          className={({ isActive }) =>
+            `navbar-notification-link ${isActive ? 'navbar-link-active' : ''}`
+          }
+        >
+          <span className="navbar-bell" aria-hidden="true">
+            🔔
+          </span>
+          <span>Notifications</span>
+
+          {unreadCount > 0 && (
+            <span className="navbar-notification-badge">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </NavLink>
 
         <Link to="/login" className="navbar-login" onClick={closeMenu}>
           Log In

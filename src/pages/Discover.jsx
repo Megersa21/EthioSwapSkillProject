@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import '../styles/Discover.css';
 
-const skillPartners = [
+const PROFILE_KEY = 'swapSkillMyProfile';
+const LISTINGS_KEY = 'swapSkillListings';
+const REQUESTS_KEY = 'swapSkillRequests';
+const NOTIFICATIONS_KEY = 'swapSkillNotifications';
+
+const samplePartners = [
   {
     id: 1,
     name: 'Hana Bekele',
@@ -73,59 +77,191 @@ const popularSkills = [
   'Graphic Design',
 ];
 
-export default function Discover() {
+function readStorage(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : JSON.parse(value);
+  } catch (error) {
+    console.error(`Could not read ${key}:`, error);
+    return fallback;
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`Could not save ${key}:`, error);
+    return false;
+  }
+}
+
+function uniqueSkills(skills) {
+  const seen = new Set();
+
+  return skills
+    .filter((skill) => {
+      if (typeof skill !== 'string' || !skill.trim()) return false;
+      const normalized = skill.trim().toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .map((skill) => skill.trim());
+}
+
+function getInitials(name) {
+  return (name || 'You')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
+
+function createId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getRequestStatus(requests, person) {
+  const matching = requests.filter((request) => {
+    const direction = String(request.direction || '').toLowerCase();
+    if (!['sent', 'outgoing'].includes(direction)) return false;
+
+    return (
+      String(request.receiverId || '') === String(person.id) ||
+      String(request.receiverName || '').toLowerCase() ===
+        person.name.toLowerCase()
+    );
+  });
+
+  if (matching.some((request) => request.status === 'accepted')) {
+    return 'accepted';
+  }
+
+  if (
+    matching.some(
+      (request) =>
+        String(request.status || 'pending').toLowerCase() === 'pending',
+    )
+  ) {
+    return 'pending';
+  }
+
+  return '';
+}
+
+function Discover() {
+  const [profile, setProfile] = useState(() => readStorage(PROFILE_KEY, {}));
+  const [listings, setListings] = useState(() => readStorage(LISTINGS_KEY, []));
+  const [requests, setRequests] = useState(() => readStorage(REQUESTS_KEY, []));
+
   const [search, setSearch] = useState('');
   const [selectedSkill, setSelectedSkill] = useState('All skills');
   const [level, setLevel] = useState('All levels');
   const [availability, setAvailability] = useState('Any time');
   const [location, setLocation] = useState('');
   const [sort, setSort] = useState('Best match');
+  const [feedback, setFeedback] = useState('');
+
+  useEffect(() => {
+    function refresh() {
+      setProfile(readStorage(PROFILE_KEY, {}));
+
+      const savedListings = readStorage(LISTINGS_KEY, []);
+      setListings(Array.isArray(savedListings) ? savedListings : []);
+
+      const savedRequests = readStorage(REQUESTS_KEY, []);
+      setRequests(Array.isArray(savedRequests) ? savedRequests : []);
+    }
+
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('swapSkillRequestsUpdated', refresh);
+
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('swapSkillRequestsUpdated', refresh);
+    };
+  }, []);
+
+  const myPartnerProfile = useMemo(() => {
+    const validListings = Array.isArray(listings) ? listings : [];
+    const teaches = uniqueSkills(validListings.map((item) => item.teachSkill));
+    const wants = uniqueSkills(validListings.map((item) => item.learnSkill));
+
+    const hasProfile =
+      profile &&
+      typeof profile === 'object' &&
+      (profile.name ||
+        profile.fullName ||
+        profile.location ||
+        profile.bio ||
+        teaches.length ||
+        wants.length);
+
+    if (!hasProfile) return null;
+
+    const firstListing = validListings[0] || {};
+
+    return {
+      id: 'me',
+      name: profile.name || profile.fullName || 'Your profile',
+      initials: getInitials(profile.name || profile.fullName || 'You'),
+      location: profile.location || 'Location not added',
+      teaches,
+      wants,
+      level: firstListing.teachLevel || 'Not specified',
+      availability: firstListing.availability || 'Flexible',
+      rating: null,
+      swaps: null,
+      match: null,
+      color: 'mint',
+      isOwnProfile: true,
+    };
+  }, [profile, listings]);
+
+  const allPartners = useMemo(
+    () => [...(myPartnerProfile ? [myPartnerProfile] : []), ...samplePartners],
+    [myPartnerProfile],
+  );
 
   const filteredPartners = useMemo(() => {
-    let results = skillPartners.filter((person) => {
-      const query = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
+    const locationQuery = location.trim().toLowerCase();
 
-      const matchesSearch =
-        !query ||
-        person.name.toLowerCase().includes(query) ||
-        person.location.toLowerCase().includes(query) ||
-        [...person.teaches, ...person.wants].some((skill) =>
-          skill.toLowerCase().includes(query),
-        );
-
-      const matchesSkill =
-        selectedSkill === 'All skills' ||
-        person.teaches.includes(selectedSkill) ||
-        person.wants.includes(selectedSkill);
-
-      const matchesLevel = level === 'All levels' || person.level === level;
-
-      const matchesAvailability =
-        availability === 'Any time' || person.availability === availability;
-
-      const matchesLocation =
-        !location.trim() ||
-        person.location.toLowerCase().includes(location.trim().toLowerCase());
+    let results = allPartners.filter((person) => {
+      const skills = [...person.teaches, ...person.wants];
 
       return (
-        matchesSearch &&
-        matchesSkill &&
-        matchesLevel &&
-        matchesAvailability &&
-        matchesLocation
+        (!query ||
+          person.name.toLowerCase().includes(query) ||
+          person.location.toLowerCase().includes(query) ||
+          skills.some((skill) => skill.toLowerCase().includes(query))) &&
+        (selectedSkill === 'All skills' ||
+          skills.some(
+            (skill) => skill.toLowerCase() === selectedSkill.toLowerCase(),
+          )) &&
+        (level === 'All levels' || person.level === level) &&
+        (availability === 'Any time' || person.availability === availability) &&
+        (!locationQuery ||
+          person.location.toLowerCase().includes(locationQuery))
       );
     });
 
     if (sort === 'Highest rated') {
-      results = [...results].sort((a, b) => b.rating - a.rating);
+      results = [...results].sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (sort === 'Most swaps') {
-      results = [...results].sort((a, b) => b.swaps - a.swaps);
+      results = [...results].sort((a, b) => (b.swaps || 0) - (a.swaps || 0));
     } else {
-      results = [...results].sort((a, b) => b.match - a.match);
+      results = [...results].sort((a, b) => (b.match || 0) - (a.match || 0));
     }
 
     return results;
-  }, [search, selectedSkill, level, availability, location, sort]);
+  }, [allPartners, search, selectedSkill, level, availability, location, sort]);
 
   function clearFilters() {
     setSearch('');
@@ -134,6 +270,93 @@ export default function Discover() {
     setAvailability('Any time');
     setLocation('');
     setSort('Best match');
+  }
+
+  function sendRequest(person) {
+    setFeedback('');
+
+    if (person.isOwnProfile) {
+      setFeedback('You cannot send a request to your own profile.');
+      return;
+    }
+
+    const saved = readStorage(REQUESTS_KEY, []);
+    const currentRequests = Array.isArray(saved) ? saved : [];
+
+    const duplicate = currentRequests.some((request) => {
+      const direction = String(request.direction || '').toLowerCase();
+      const samePartner =
+        String(request.receiverId || '') === String(person.id) ||
+        (['sent', 'outgoing'].includes(direction) &&
+          String(request.receiverName || '').toLowerCase() ===
+            person.name.toLowerCase());
+
+      return (
+        samePartner &&
+        ['pending', 'accepted'].includes(
+          String(request.status || 'pending').toLowerCase(),
+        )
+      );
+    });
+
+    if (duplicate) {
+      setRequests(currentRequests);
+      setFeedback(
+        `You already have a pending or accepted request with ${person.name}.`,
+      );
+      return;
+    }
+
+    const myName =
+      profile?.name ||
+      profile?.fullName ||
+      profile?.displayName ||
+      'SwapSkill member';
+
+    const newRequest = {
+      id: createId(),
+      direction: 'sent',
+      senderId: String(profile?.id || 'me'),
+      senderName: myName,
+      receiverId: String(person.id),
+      receiverName: person.name,
+      teachSkill: person.wants[0] || 'Skill exchange',
+      learnSkill: person.teaches[0] || 'Skill exchange',
+      note: `Hello ${person.name}, I would like to exchange skills with you.`,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedRequests = [newRequest, ...currentRequests];
+
+    if (!writeStorage(REQUESTS_KEY, updatedRequests)) {
+      setFeedback('Could not save your request. Please try again.');
+      return;
+    }
+
+    setRequests(updatedRequests);
+
+    const savedNotifications = readStorage(NOTIFICATIONS_KEY, []);
+    const notifications = Array.isArray(savedNotifications)
+      ? savedNotifications
+      : [];
+
+    writeStorage(NOTIFICATIONS_KEY, [
+      {
+        id: createId(),
+        title: 'Skill-swap request sent',
+        message: `Your request to ${person.name} has been saved.`,
+        type: 'request',
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      ...notifications,
+    ]);
+
+    window.dispatchEvent(new Event('swapSkillRequestsUpdated'));
+    window.dispatchEvent(new Event('swapSkillNotificationsUpdated'));
+
+    setFeedback(`Your request to ${person.name} was sent successfully.`);
   }
 
   return (
@@ -194,23 +417,27 @@ export default function Discover() {
               <select
                 id="filter-level"
                 value={level}
-                onChange={(event) => setLevel(event.target.value)}
+                onChange={(e) => setLevel(e.target.value)}
               >
                 <option>All levels</option>
                 <option>Beginner</option>
                 <option>Intermediate</option>
                 <option>Advanced</option>
+                <option>Expert</option>
+                <option>Not specified</option>
               </select>
 
               <label htmlFor="filter-availability">Availability</label>
               <select
                 id="filter-availability"
                 value={availability}
-                onChange={(event) => setAvailability(event.target.value)}
+                onChange={(e) => setAvailability(e.target.value)}
               >
                 <option>Any time</option>
+                <option>Weekdays</option>
                 <option>Weekends</option>
                 <option>Evenings</option>
+                <option>Flexible</option>
               </select>
 
               <label htmlFor="filter-location">Location</label>
@@ -219,7 +446,7 @@ export default function Discover() {
                 type="text"
                 placeholder="Enter a city"
                 value={location}
-                onChange={(event) => setLocation(event.target.value)}
+                onChange={(e) => setLocation(e.target.value)}
               />
 
               <div className="filter-note">
@@ -246,7 +473,7 @@ export default function Discover() {
                   <span>Sort by</span>
                   <select
                     value={sort}
-                    onChange={(event) => setSort(event.target.value)}
+                    onChange={(e) => setSort(e.target.value)}
                     aria-label="Sort partners"
                   >
                     <option>Best match</option>
@@ -256,66 +483,123 @@ export default function Discover() {
                 </label>
               </div>
 
-              {filteredPartners.length > 0 ? (
+              {feedback && (
+                <p className="discover-feedback" role="status">
+                  {feedback}
+                </p>
+              )}
+
+              {filteredPartners.length ? (
                 <div className="partner-grid">
-                  {filteredPartners.map((person) => (
-                    <article className="partner-card" key={person.id}>
-                      <div className="partner-card-top">
-                        <div className={`partner-avatar ${person.color}`}>
-                          {person.initials}
+                  {filteredPartners.map((person) => {
+                    const status = getRequestStatus(requests, person);
+
+                    return (
+                      <article className="partner-card" key={person.id}>
+                        <div className="partner-card-top">
+                          <div className={`partner-avatar ${person.color}`}>
+                            {person.initials}
+                          </div>
+                          <div className="partner-match">
+                            {person.isOwnProfile ? (
+                              <>
+                                <strong>You</strong>
+                                <span>Your listing</span>
+                              </>
+                            ) : (
+                              <>
+                                <strong>{person.match}%</strong>
+                                <span>match</span>
+                              </>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="partner-match">
-                          <strong>{person.match}%</strong>
-                          <span>match</span>
+                        <h3>{person.name}</h3>
+                        <p className="partner-location">
+                          <span aria-hidden="true">⌖</span> {person.location}
+                        </p>
+
+                        <div className="partner-stats">
+                          {person.isOwnProfile ? (
+                            <span>Your profile</span>
+                          ) : (
+                            <>
+                              <span>★ {person.rating}</span>
+                              <span>{person.swaps} successful swaps</span>
+                            </>
+                          )}
                         </div>
-                      </div>
 
-                      <h3>{person.name}</h3>
-                      <p className="partner-location">
-                        <span aria-hidden="true">⌖</span> {person.location}
-                      </p>
-
-                      <div className="partner-stats">
-                        <span>★ {person.rating}</span>
-                        <span>{person.swaps} successful swaps</span>
-                      </div>
-
-                      <div className="partner-skills">
-                        <h4>Can teach you</h4>
-                        <div className="partner-tags">
-                          {person.teaches.map((skill) => (
-                            <span className="teach-tag" key={skill}>
-                              {skill}
-                            </span>
-                          ))}
+                        <div className="partner-skills">
+                          <h4>Can teach you</h4>
+                          <div className="partner-tags">
+                            {person.teaches.length ? (
+                              person.teaches.map((skill) => (
+                                <span className="teach-tag" key={skill}>
+                                  {skill}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="teach-tag">
+                                No teaching skills added
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="partner-skills">
-                        <h4>Wants to learn</h4>
-                        <div className="partner-tags">
-                          {person.wants.map((skill) => (
-                            <span className="want-tag" key={skill}>
-                              {skill}
-                            </span>
-                          ))}
+                        <div className="partner-skills">
+                          <h4>Wants to learn</h4>
+                          <div className="partner-tags">
+                            {person.wants.length ? (
+                              person.wants.map((skill) => (
+                                <span className="want-tag" key={skill}>
+                                  {skill}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="want-tag">
+                                No learning skills added
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="partner-card-footer">
-                        <span>{person.level}</span>
-                        <span>{person.availability}</span>
-                      </div>
+                        <div className="partner-card-footer">
+                          <span>{person.level}</span>
+                          <span>{person.availability}</span>
+                        </div>
 
-                      <Link
-                        className="partner-profile-link"
-                        to={`/profile/${person.id}`}
-                      >
-                        View profile <span aria-hidden="true">→</span>
-                      </Link>
-                    </article>
-                  ))}
+                        <Link
+                          className="partner-profile-link"
+                          to={
+                            person.isOwnProfile
+                              ? '/profile/me'
+                              : `/profile/${person.id}`
+                          }
+                        >
+                          {person.isOwnProfile
+                            ? 'View your profile'
+                            : 'View profile'}
+                          <span aria-hidden="true"> →</span>
+                        </Link>
+
+                        {!person.isOwnProfile && (
+                          <button
+                            type="button"
+                            className="partner-request-button"
+                            onClick={() => sendRequest(person)}
+                          >
+                            {status === 'accepted'
+                              ? 'Request accepted'
+                              : status === 'pending'
+                                ? 'Request pending — click to check'
+                                : 'Send skill-swap request'}
+                          </button>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="discover-empty">
@@ -331,8 +615,9 @@ export default function Discover() {
           </div>
         </section>
       </main>
-
       <Footer />
     </>
   );
 }
+
+export default Discover;
