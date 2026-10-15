@@ -1,780 +1,652 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Footer from '../components/Footer';
 import '../styles/Requests.css';
 
-const REQUESTS_KEY = 'swapSkillRequests';
-const PROFILE_KEY = 'swapSkillMyProfile';
-const LISTINGS_KEY = 'swapSkillListings';
-const NOTIFICATIONS_KEY = 'swapSkillNotifications';
+const STORAGE_KEY = 'swapSkillRequests';
 
-function readStorage(key, fallback) {
+const sampleRequests = [
+  {
+    id: 'req-1',
+    direction: 'incoming',
+    name: 'Dawit Alemu',
+    initials: 'DA',
+    location: 'Addis Ababa',
+    offeredSkill: 'Web Development',
+    wantedSkill: 'UI/UX Design',
+    message:
+      "Hi! I can help you learn React and JavaScript. I'd love to learn UI/UX design from you.",
+    date: '2026-10-14',
+    status: 'Pending',
+  },
+  {
+    id: 'req-2',
+    direction: 'incoming',
+    name: 'Meron Bekele',
+    initials: 'MB',
+    location: 'Dire Dawa',
+    offeredSkill: 'Flutter Development',
+    wantedSkill: 'Graphic Design',
+    message:
+      "Let's exchange skills! I can teach you Flutter basics and learn graphic design in return.",
+    date: '2026-10-13',
+    status: 'Pending',
+  },
+  {
+    id: 'req-3',
+    direction: 'outgoing',
+    name: 'Hana Bekele',
+    initials: 'HB',
+    location: 'Harar',
+    offeredSkill: 'JavaScript',
+    wantedSkill: 'English Conversation',
+    message:
+      "I'd love to exchange JavaScript lessons for English conversation practice.",
+    date: '2026-10-12',
+    status: 'Pending',
+  },
+  {
+    id: 'req-4',
+    direction: 'outgoing',
+    name: 'Yonas Tadesse',
+    initials: 'YT',
+    location: 'Addis Ababa',
+    offeredSkill: 'HTML and CSS',
+    wantedSkill: 'Photography',
+    message: 'I can help with web development if you can teach me photography.',
+    date: '2026-10-10',
+    status: 'Accepted',
+  },
+];
+
+function readRequests() {
   try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : JSON.parse(value);
+    const saved = localStorage.getItem(STORAGE_KEY);
+
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : sampleRequests;
+    }
+
+    return sampleRequests;
   } catch (error) {
-    console.error(`Could not read ${key}:`, error);
-    return fallback;
+    console.error('Unable to load skill-swap requests:', error);
+    return sampleRequests;
   }
 }
 
-function getRequests() {
-  const saved = readStorage(REQUESTS_KEY, []);
-  return Array.isArray(saved) ? saved : [];
-}
+function formatDate(dateString) {
+  if (!dateString) return 'Recently';
 
-function saveRequests(requests) {
-  try {
-    localStorage.setItem(REQUESTS_KEY, JSON.stringify(requests));
-    window.dispatchEvent(new Event('swapSkillRequestsUpdated'));
-    return true;
-  } catch (error) {
-    console.error('Could not save requests:', error);
-    return false;
-  }
-}
-
-function createId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function getStatus(request) {
-  return String(request.status || 'pending').toLowerCase();
-}
-
-function getRequesterName(request) {
-  return (
-    request.senderName ||
-    request.fromName ||
-    request.requesterName ||
-    request.partnerName ||
-    request.name ||
-    'SwapSkill member'
-  );
-}
-
-function getRecipientName(request) {
-  return (
-    request.receiverName ||
-    request.toName ||
-    request.recipientName ||
-    'SwapSkill member'
-  );
-}
-
-function getOfferedSkill(request) {
-  return (
-    request.teachSkill ||
-    request.offeredSkill ||
-    request.skillOffered ||
-    request.mySkill ||
-    'Skill not specified'
-  );
-}
-
-function getWantedSkill(request) {
-  return (
-    request.learnSkill ||
-    request.requestedSkill ||
-    request.skillWanted ||
-    request.theirSkill ||
-    'Skill not specified'
-  );
-}
-
-function formatDate(value) {
-  if (!value) return 'Recently';
-
-  const date = new Date(value);
+  const date = new Date(`${dateString}T00:00:00`);
 
   if (Number.isNaN(date.getTime())) return 'Recently';
 
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString('en', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
 }
 
-function saveNotification(message) {
-  const saved = readStorage(NOTIFICATIONS_KEY, []);
-  const notifications = Array.isArray(saved) ? saved : [];
-
-  try {
-    localStorage.setItem(
-      NOTIFICATIONS_KEY,
-      JSON.stringify(
-        [
-          {
-            id: createId(),
-            title: 'Skill-swap request update',
-            message,
-            type: 'request',
-            read: false,
-            createdAt: new Date().toISOString(),
-          },
-          ...notifications,
-        ].slice(0, 50),
-      ),
-    );
-
-    window.dispatchEvent(new Event('swapSkillNotificationsUpdated'));
-  } catch (error) {
-    console.error('Could not save notification:', error);
-  }
-}
-
 function Requests() {
-  const [requests, setRequests] = useState(() => getRequests());
-  const [activeTab, setActiveTab] = useState('incoming');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [requests, setRequests] = useState(readRequests);
+  const [activeTab, setActiveTab] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [formError, setFormError] = useState('');
 
-  const [myProfile, setMyProfile] = useState(() =>
-    readStorage(PROFILE_KEY, {}),
-  );
-
-  const [listings, setListings] = useState(() => {
-    const saved = readStorage(LISTINGS_KEY, []);
-    return Array.isArray(saved) ? saved : [];
-  });
-
-  const [form, setForm] = useState({
-    recipientName: '',
-    teachSkill: '',
-    customTeachSkill: '',
-    learnSkill: '',
-    note: '',
+  const [formData, setFormData] = useState({
+    name: '',
+    location: '',
+    offeredSkill: '',
+    wantedSkill: '',
+    message: '',
   });
 
   useEffect(() => {
-    function refresh() {
-      setRequests(getRequests());
-      setMyProfile(readStorage(PROFILE_KEY, {}));
-
-      const savedListings = readStorage(LISTINGS_KEY, []);
-      setListings(Array.isArray(savedListings) ? savedListings : []);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
+    } catch (error) {
+      console.error('Unable to save skill-swap requests:', error);
     }
+  }, [requests]);
 
-    window.addEventListener('storage', refresh);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('swapSkillRequestsUpdated', refresh);
+  const filteredRequests = useMemo(() => {
+    return requests.filter((request) => {
+      const matchesTab = activeTab === 'all' || request.direction === activeTab;
 
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('swapSkillRequestsUpdated', refresh);
-    };
-  }, []);
+      const matchesStatus =
+        statusFilter === 'All' || request.status === statusFilter;
 
-  const myName =
-    myProfile.name ||
-    myProfile.fullName ||
-    myProfile.displayName ||
-    'SwapSkill member';
+      const searchText = search.trim().toLowerCase();
 
-  const mySkills = useMemo(() => {
-    const skills = [];
+      const matchesSearch =
+        !searchText ||
+        [
+          request.name,
+          request.location,
+          request.offeredSkill,
+          request.wantedSkill,
+          request.message,
+        ]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(searchText));
 
-    if (Array.isArray(listings)) {
-      listings.forEach((listing) => {
-        if (listing.teachSkill) skills.push(listing.teachSkill);
-      });
-    }
+      return matchesTab && matchesStatus && matchesSearch;
+    });
+  }, [requests, activeTab, statusFilter, search]);
 
-    if (myProfile.teachSkill) {
-      skills.push(myProfile.teachSkill);
-    }
+  const incomingCount = requests.filter(
+    (request) =>
+      request.direction === 'incoming' && request.status === 'Pending',
+  ).length;
 
-    return [
-      ...new Set(
-        skills
-          .filter((skill) => typeof skill === 'string')
-          .map((skill) => skill.trim())
-          .filter(Boolean),
+  const outgoingCount = requests.filter(
+    (request) =>
+      request.direction === 'outgoing' && request.status === 'Pending',
+  ).length;
+
+  const acceptedCount = requests.filter(
+    (request) => request.status === 'Accepted',
+  ).length;
+
+  function updateStatus(id, newStatus) {
+    setRequests((currentRequests) =>
+      currentRequests.map((request) =>
+        request.id === id ? { ...request, status: newStatus } : request,
       ),
-    ];
-  }, [listings, myProfile]);
+    );
 
-  // Incoming requests must be addressed to the current user or explicitly
-  // marked as incoming. Outgoing requests never belong in this tab.
-  const incomingRequests = useMemo(() => {
-    return requests.filter((request) => {
-      const direction = String(request.direction || '').toLowerCase();
-      const status = getStatus(request);
+    const messages = {
+      Accepted: 'Request accepted successfully.',
+      Rejected: 'Request rejected.',
+      Cancelled: 'Request cancelled.',
+    };
 
-      if (['sent', 'outgoing'].includes(direction)) return false;
-      if (['cancelled', 'deleted'].includes(status)) return false;
-
-      if (
-        String(
-          request.receiverId || request.toUserId || request.recipientId || '',
-        ) === String(myProfile.id || 'me')
-      ) {
-        return true;
-      }
-
-      if (direction === 'incoming') return true;
-
-      // Support older demo requests without direction or user IDs.
-      return (
-        !direction &&
-        !request.senderId &&
-        !request.fromUserId &&
-        !request.receiverId &&
-        !request.toUserId &&
-        !request.recipientId
-      );
-    });
-  }, [requests, myProfile.id]);
-
-  const sentRequests = useMemo(() => {
-    return requests.filter((request) => {
-      const direction = String(request.direction || '').toLowerCase();
-
-      return (
-        ['sent', 'outgoing'].includes(direction) ||
-        String(request.senderId || request.fromUserId || '') ===
-          String(myProfile.id || 'me')
-      );
-    });
-  }, [requests, myProfile.id]);
-
-  function updateForm(event) {
-    const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
+    setNotice(messages[newStatus] || 'Request updated.');
   }
 
-  function sendRequest(event) {
+  function handleFormChange(event) {
+    const { name, value } = event.target;
+
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+    }));
+
+    setFormError('');
+  }
+
+  function handleSendRequest(event) {
     event.preventDefault();
-    setError('');
-    setSuccess('');
 
-    const recipientName = form.recipientName.trim();
+    const name = formData.name.trim();
+    const offeredSkill = formData.offeredSkill.trim();
+    const wantedSkill = formData.wantedSkill.trim();
+    const message = formData.message.trim();
 
-    const teachSkill =
-      form.teachSkill === '__other__'
-        ? form.customTeachSkill.trim()
-        : form.teachSkill.trim();
-
-    const learnSkill = form.learnSkill.trim();
-
-    if (!recipientName || !teachSkill || !learnSkill) {
-      setError('Please complete the partner name and both skill fields.');
+    if (!name || !offeredSkill || !wantedSkill || !message) {
+      setFormError('Please complete all required fields.');
       return;
     }
 
-    if (teachSkill.toLowerCase() === learnSkill.toLowerCase()) {
-      setError('Choose two different skills for your exchange.');
-      return;
-    }
-
-    const duplicate = requests.some((request) => {
-      const direction = String(request.direction || '').toLowerCase();
-
-      return (
-        ['sent', 'outgoing'].includes(direction) &&
-        getRecipientName(request).toLowerCase() ===
-          recipientName.toLowerCase() &&
-        getStatus(request) === 'pending'
-      );
-    });
-
-    if (duplicate) {
-      setError('You already have a pending request to this partner.');
+    if (offeredSkill.toLowerCase() === wantedSkill.toLowerCase()) {
+      setFormError('Choose two different skills for your exchange.');
       return;
     }
 
     const newRequest = {
-      id: createId(),
-      direction: 'sent',
-      senderId: String(myProfile.id || 'me'),
-      senderName: myName,
-      receiverId: '',
-      receiverName: recipientName,
-      teachSkill,
-      learnSkill,
-      note: form.note.trim(),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
+      id: `req-${Date.now()}`,
+      direction: 'outgoing',
+      name,
+      initials: name
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join('')
+        .toUpperCase(),
+      location: formData.location.trim() || 'Location not provided',
+      offeredSkill,
+      wantedSkill,
+      message,
+      date: new Date().toLocaleDateString('en-CA'),
+      status: 'Pending',
     };
 
-    const updated = [newRequest, ...requests];
+    setRequests((currentRequests) => [newRequest, ...currentRequests]);
 
-    if (!saveRequests(updated)) {
-      setError('The request could not be saved. Please try again.');
-      return;
-    }
-
-    setRequests(updated);
-    saveNotification(`You sent a skill-swap request to ${recipientName}.`);
-
-    setForm({
-      recipientName: '',
-      teachSkill: '',
-      customTeachSkill: '',
-      learnSkill: '',
-      note: '',
+    setFormData({
+      name: '',
+      location: '',
+      offeredSkill: '',
+      wantedSkill: '',
+      message: '',
     });
 
-    setActiveTab('sent');
-    setSuccess(`Your request to ${recipientName} has been saved.`);
+    setFormError('');
+    setShowForm(false);
+    setActiveTab('outgoing');
+    setStatusFilter('All');
+    setSearch('');
+    setNotice('Your skill-swap request has been created.');
   }
 
-  // Create an incoming sample request to test the Accept and Reject buttons.
-  function addDemoIncomingRequest() {
-    setError('');
-    setSuccess('');
-
-    const existingDemo = requests.some(
-      (request) => request.isDemoIncoming === true,
-    );
-
-    if (existingDemo) {
-      setSuccess(
-        'A demo incoming request already exists. Open Incoming to find it.',
-      );
-      setActiveTab('incoming');
-      return;
-    }
-
-    const demoRequest = {
-      id: createId(),
-      direction: 'incoming',
-      senderId: 'demo-hana',
-      senderName: 'Hana Bekele',
-      receiverId: String(myProfile.id || 'me'),
-      receiverName: myName,
-      teachSkill: 'Graphic Design',
-      learnSkill: 'Web Development',
-      note: 'Hi! I can teach you graphic design, and I would love to learn web development from you.',
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      isDemoIncoming: true,
-    };
-
-    const updated = [demoRequest, ...requests];
-
-    if (!saveRequests(updated)) {
-      setError('Could not create the demo request. Please try again.');
-      return;
-    }
-
-    setRequests(updated);
-    setActiveTab('incoming');
-    setSuccess('Demo request added. You can now test Accept and Reject below.');
+  function openRequestForm() {
+    setNotice('');
+    setFormError('');
+    setShowForm(true);
   }
-
-  function changeRequestStatus(requestId, nextStatus) {
-    const request = requests.find(
-      (item) => String(item.id) === String(requestId),
-    );
-
-    if (!request) {
-      setError('Request not found. Refresh the page and try again.');
-      return;
-    }
-
-    if (!['accepted', 'rejected'].includes(nextStatus)) return;
-
-    if (getStatus(request) !== 'pending') {
-      setError('This request has already been answered.');
-      return;
-    }
-
-    const updated = requests.map((item) =>
-      String(item.id) === String(requestId)
-        ? {
-            ...item,
-            status: nextStatus,
-            updatedAt: new Date().toISOString(),
-          }
-        : item,
-    );
-
-    if (!saveRequests(updated)) {
-      setError('The request status could not be saved.');
-      return;
-    }
-
-    setRequests(updated);
-    setError('');
-
-    const requester = getRequesterName(request);
-
-    if (nextStatus === 'accepted') {
-      saveNotification(`You accepted ${requester}'s swap request.`);
-      setSuccess(`You accepted ${requester}'s request.`);
-    } else {
-      saveNotification(`You rejected ${requester}'s swap request.`);
-      setSuccess(`You rejected ${requester}'s request.`);
-    }
-  }
-
-  const visibleRequests =
-    activeTab === 'incoming' ? incomingRequests : sentRequests;
-
-  const pendingIncoming = incomingRequests.filter(
-    (request) => getStatus(request) === 'pending',
-  ).length;
-
-  const pendingSent = sentRequests.filter(
-    (request) => getStatus(request) === 'pending',
-  ).length;
 
   return (
     <div className="requests-page">
       <main className="requests-main">
-        <header className="requests-header">
+        <section className="requests-heading">
           <div>
-            <p className="requests-eyebrow">YOUR SKILL EXCHANGES</p>
-            <h1>Swap requests</h1>
-            <p className="requests-subtitle">
-              Offer what you know, learn something new, and agree on a fair
-              exchange.
+            <span className="requests-eyebrow">YOUR SKILL EXCHANGES</span>
+            <h1>Skill Swap Requests</h1>
+            <p>
+              Connect with people, exchange knowledge, and grow your skills
+              together.
             </p>
           </div>
 
-          <Link to="/discover" className="requests-browse-link">
-            Discover partners <span aria-hidden="true">→</span>
-          </Link>
-        </header>
+          <button
+            type="button"
+            className="requests-primary-button"
+            onClick={openRequestForm}
+          >
+            <span aria-hidden="true">＋</span> Create Request
+          </button>
+        </section>
 
-        <section className="requests-stats" aria-label="Request summary">
-          <article className="request-stat-card">
-            <span className="request-stat-icon">↓</span>
+        {notice && (
+          <div className="requests-notice" role="status">
+            <span>{notice}</span>
+            <button
+              type="button"
+              onClick={() => setNotice('')}
+              aria-label="Dismiss notification"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        <section className="requests-stats">
+          <article className="requests-stat-card">
+            <span className="requests-stat-icon incoming-icon">↙</span>
             <div>
-              <span className="request-stat-label">Incoming pending</span>
-              <strong>{pendingIncoming}</strong>
+              <p>Incoming Pending</p>
+              <strong>{incomingCount}</strong>
             </div>
           </article>
 
-          <article className="request-stat-card">
-            <span className="request-stat-icon">↑</span>
+          <article className="requests-stat-card">
+            <span className="requests-stat-icon outgoing-icon">↗</span>
             <div>
-              <span className="request-stat-label">Sent pending</span>
-              <strong>{pendingSent}</strong>
+              <p>Outgoing Pending</p>
+              <strong>{outgoingCount}</strong>
             </div>
           </article>
 
-          <article className="request-stat-card">
-            <span className="request-stat-icon">↔</span>
+          <article className="requests-stat-card">
+            <span className="requests-stat-icon accepted-icon">✓</span>
             <div>
-              <span className="request-stat-label">Total requests</span>
-              <strong>{requests.length}</strong>
+              <p>Accepted Requests</p>
+              <strong>{acceptedCount}</strong>
             </div>
           </article>
         </section>
 
-        <section className="request-compose-card">
-          <div className="request-section-heading">
-            <div>
-              <h2>Send a swap request</h2>
-              <p>Choose what you can teach and what you want to learn.</p>
-            </div>
-            <span className="request-compose-icon">＋</span>
-          </div>
+        <section className="requests-workspace">
+          <div className="requests-toolbar">
+            <div
+              className="requests-tabs"
+              role="group"
+              aria-label="Request type"
+            >
+              <button
+                type="button"
+                className={activeTab === 'all' ? 'active' : ''}
+                onClick={() => setActiveTab('all')}
+              >
+                All Requests
+                <span>{requests.length}</span>
+              </button>
 
-          <form onSubmit={sendRequest} className="request-form">
-            <div className="request-form-grid">
-              <label>
-                Partner name
-                <input
-                  name="recipientName"
-                  value={form.recipientName}
-                  onChange={updateForm}
-                  placeholder="e.g. Hana Bekele"
-                  autoComplete="off"
-                  required
-                />
-              </label>
+              <button
+                type="button"
+                className={activeTab === 'incoming' ? 'active' : ''}
+                onClick={() => setActiveTab('incoming')}
+              >
+                Incoming
+                <span>
+                  {
+                    requests.filter((item) => item.direction === 'incoming')
+                      .length
+                  }
+                </span>
+              </button>
 
-              <label>
-                Skill you will teach
-                {mySkills.length > 0 ? (
-                  <select
-                    name="teachSkill"
-                    value={form.teachSkill}
-                    onChange={updateForm}
-                    required
-                  >
-                    <option value="">Choose a skill</option>
-                    {mySkills.map((skill) => (
-                      <option key={skill} value={skill}>
-                        {skill}
-                      </option>
-                    ))}
-                    <option value="__other__">Other skill…</option>
-                  </select>
-                ) : (
-                  <input
-                    name="teachSkill"
-                    value={form.teachSkill}
-                    onChange={updateForm}
-                    placeholder="e.g. Graphic design"
-                    required
-                  />
-                )}
-              </label>
-
-              {mySkills.length > 0 && form.teachSkill === '__other__' && (
-                <label>
-                  Enter your skill
-                  <input
-                    name="customTeachSkill"
-                    value={form.customTeachSkill}
-                    onChange={updateForm}
-                    placeholder="Type your skill"
-                    required
-                  />
-                </label>
-              )}
-
-              <label>
-                Skill you want to learn
-                <input
-                  name="learnSkill"
-                  value={form.learnSkill}
-                  onChange={updateForm}
-                  placeholder="e.g. Web development"
-                  required
-                />
-              </label>
-
-              <label className="request-note-field">
-                Message (optional)
-                <textarea
-                  name="note"
-                  value={form.note}
-                  onChange={updateForm}
-                  placeholder="Introduce yourself and explain what you hope to exchange."
-                  rows={3}
-                  maxLength={500}
-                />
-              </label>
-            </div>
-
-            {error && (
-              <p className="request-feedback error" role="alert">
-                {error}
-              </p>
-            )}
-
-            {success && (
-              <p className="request-feedback success" role="status">
-                {success}
-              </p>
-            )}
-
-            <div className="request-form-footer">
-              <p>
-                <span aria-hidden="true">🔒</span> Be respectful and agree on
-                clear learning goals.
-              </p>
-              <button type="submit" className="request-primary-button">
-                Send request
+              <button
+                type="button"
+                className={activeTab === 'outgoing' ? 'active' : ''}
+                onClick={() => setActiveTab('outgoing')}
+              >
+                Sent
+                <span>
+                  {
+                    requests.filter((item) => item.direction === 'outgoing')
+                      .length
+                  }
+                </span>
               </button>
             </div>
-          </form>
+
+            <div className="requests-filters">
+              <label className="requests-search">
+                <span aria-hidden="true">⌕</span>
+                <input
+                  type="search"
+                  placeholder="Search requests..."
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  aria-label="Search requests"
+                />
+              </label>
+
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                aria-label="Filter by status"
+              >
+                <option value="All">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Accepted">Accepted</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="requests-list">
+            {filteredRequests.length === 0 ? (
+              <div className="requests-empty">
+                <span className="requests-empty-icon">⇄</span>
+                <h2>No requests found</h2>
+                <p>Try another filter or create a new skill-swap request.</p>
+                <button
+                  type="button"
+                  className="requests-primary-button"
+                  onClick={openRequestForm}
+                >
+                  Create Request
+                </button>
+              </div>
+            ) : (
+              filteredRequests.map((request) => (
+                <article className="request-card" key={request.id}>
+                  <div className="request-card-top">
+                    <div className="request-person">
+                      <div className="request-avatar">
+                        {request.initials ||
+                          request.name?.slice(0, 2).toUpperCase()}
+                      </div>
+
+                      <div className="request-person-info">
+                        <h2>{request.name}</h2>
+                        <p>
+                          <span aria-hidden="true">⌖</span>{' '}
+                          {request.location || 'Location not provided'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="request-card-meta">
+                      <span
+                        className={`request-status status-${request.status.toLowerCase()}`}
+                      >
+                        <span className="request-status-dot" />
+                        {request.status}
+                      </span>
+                      <span className="request-date">
+                        {formatDate(request.date)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="request-skill-exchange">
+                    <div className="request-skill-box">
+                      <span className="request-skill-label">
+                        {request.direction === 'incoming'
+                          ? 'THEY OFFER'
+                          : 'YOU OFFER'}
+                      </span>
+                      <strong>{request.offeredSkill}</strong>
+                    </div>
+
+                    <span
+                      className="request-exchange-icon"
+                      aria-label="exchanged for"
+                    >
+                      ⇄
+                    </span>
+
+                    <div className="request-skill-box wanted-skill-box">
+                      <span className="request-skill-label">
+                        {request.direction === 'incoming'
+                          ? 'THEY WANT'
+                          : 'YOU WANT'}
+                      </span>
+                      <strong>{request.wantedSkill}</strong>
+                    </div>
+                  </div>
+
+                  <div className="request-message">
+                    <span className="request-message-mark">“</span>
+                    <p>{request.message}</p>
+                  </div>
+
+                  <div className="request-card-footer">
+                    <span className="request-direction-label">
+                      {request.direction === 'incoming'
+                        ? '↙ Received request'
+                        : '↗ Request sent'}
+                    </span>
+
+                    <div className="request-actions">
+                      {request.direction === 'incoming' &&
+                        request.status === 'Pending' && (
+                          <>
+                            <button
+                              type="button"
+                              className="request-reject-button"
+                              onClick={() =>
+                                updateStatus(request.id, 'Rejected')
+                              }
+                            >
+                              Reject
+                            </button>
+
+                            <button
+                              type="button"
+                              className="request-accept-button"
+                              onClick={() =>
+                                updateStatus(request.id, 'Accepted')
+                              }
+                            >
+                              ✓ Accept Request
+                            </button>
+                          </>
+                        )}
+
+                      {request.direction === 'outgoing' &&
+                        request.status === 'Pending' && (
+                          <button
+                            type="button"
+                            className="request-cancel-button"
+                            onClick={() =>
+                              updateStatus(request.id, 'Cancelled')
+                            }
+                          >
+                            Cancel Request
+                          </button>
+                        )}
+
+                      {request.status === 'Accepted' && (
+                        <Link to="/messages" className="request-message-button">
+                          Message Partner
+                        </Link>
+                      )}
+
+                      {request.status === 'Rejected' && (
+                        <span className="request-final-label">
+                          This request was rejected
+                        </span>
+                      )}
+
+                      {request.status === 'Cancelled' && (
+                        <span className="request-final-label">
+                          This request was cancelled
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
         </section>
 
-        <section className="request-list-section">
-          <div
-            className="request-tabs"
-            role="tablist"
-            aria-label="Request type"
+        <aside className="requests-help">
+          <span className="requests-help-icon">✦</span>
+          <div>
+            <h3>Make every skill exchange count</h3>
+            <p>
+              Be clear about what you can teach, communicate respectfully, and
+              agree on a session time with your partner.
+            </p>
+          </div>
+          <Link to="/discover">Discover partners →</Link>
+        </aside>
+      </main>
+
+      {showForm && (
+        <div
+          className="request-modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowForm(false);
+            }
+          }}
+        >
+          <section
+            className="request-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="request-modal-title"
           >
             <button
               type="button"
-              role="tab"
-              aria-selected={activeTab === 'incoming'}
-              className={activeTab === 'incoming' ? 'active' : ''}
-              onClick={() => {
-                setActiveTab('incoming');
-                setError('');
-                setSuccess('');
-              }}
+              className="request-modal-close"
+              onClick={() => setShowForm(false)}
+              aria-label="Close form"
             >
-              Incoming <span>{incomingRequests.length}</span>
+              ×
             </button>
 
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'sent'}
-              className={activeTab === 'sent' ? 'active' : ''}
-              onClick={() => {
-                setActiveTab('sent');
-                setError('');
-                setSuccess('');
-              }}
-            >
-              Sent <span>{sentRequests.length}</span>
-            </button>
-          </div>
+            <span className="requests-eyebrow">START CONNECTING</span>
+            <h2 id="request-modal-title">Create a skill-swap request</h2>
+            <p className="request-modal-description">
+              Choose a member and explain which skills you want to exchange.
+            </p>
 
-          <div className="request-list-heading">
-            <div>
-              <h2>
-                {activeTab === 'incoming'
-                  ? 'Requests received'
-                  : 'Requests you sent'}
-              </h2>
-              <p>
-                {activeTab === 'incoming'
-                  ? 'Accept a request to move forward, or reject it if it is not a good match.'
-                  : 'Check the status of your skill exchange invitations.'}
-              </p>
-            </div>
+            <form className="request-form" onSubmit={handleSendRequest}>
+              <label htmlFor="request-name">Member name *</label>
+              <input
+                id="request-name"
+                name="name"
+                value={formData.name}
+                onChange={handleFormChange}
+                placeholder="Enter the member's name"
+                required
+              />
 
-            {activeTab === 'incoming' && (
-              <button
-                type="button"
-                className="request-primary-button"
-                onClick={addDemoIncomingRequest}
-              >
-                + Add demo request
-              </button>
-            )}
-          </div>
+              <label htmlFor="request-location">Member location</label>
+              <input
+                id="request-location"
+                name="location"
+                value={formData.location}
+                onChange={handleFormChange}
+                placeholder="e.g. Dire Dawa"
+              />
 
-          {visibleRequests.length === 0 ? (
-            <div className="requests-empty-state">
-              <div className="requests-empty-icon">↔</div>
-              <h3>
-                {activeTab === 'incoming'
-                  ? 'No incoming requests yet'
-                  : "You haven't sent any requests"}
-              </h3>
-              <p>
-                {activeTab === 'incoming'
-                  ? 'For now, add a demo request to test accepting and rejecting requests.'
-                  : 'Send a request from Discover to start planning your first skill swap.'}
-              </p>
+              <div className="request-form-grid">
+                <div>
+                  <label htmlFor="request-offer">Skill you offer *</label>
+                  <input
+                    id="request-offer"
+                    name="offeredSkill"
+                    value={formData.offeredSkill}
+                    onChange={handleFormChange}
+                    placeholder="e.g. React"
+                    required
+                  />
+                </div>
 
-              {activeTab === 'incoming' ? (
+                <div>
+                  <label htmlFor="request-want">Skill you want *</label>
+                  <input
+                    id="request-want"
+                    name="wantedSkill"
+                    value={formData.wantedSkill}
+                    onChange={handleFormChange}
+                    placeholder="e.g. UI/UX Design"
+                    required
+                  />
+                </div>
+              </div>
+
+              <label htmlFor="request-message">Your message *</label>
+              <textarea
+                id="request-message"
+                name="message"
+                value={formData.message}
+                onChange={handleFormChange}
+                placeholder="Introduce yourself and explain your skill exchange..."
+                rows={4}
+                required
+              />
+
+              {formError && (
+                <p className="request-form-error" role="alert">
+                  {formError}
+                </p>
+              )}
+
+              <div className="request-form-actions">
                 <button
                   type="button"
-                  className="request-primary-button"
-                  onClick={addDemoIncomingRequest}
+                  className="request-form-cancel"
+                  onClick={() => setShowForm(false)}
                 >
-                  Add demo request
+                  Cancel
                 </button>
-              ) : (
-                <Link to="/discover" className="requests-empty-link">
-                  Find a skill partner
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="request-cards">
-              {visibleRequests.map((request) => {
-                const status = getStatus(request);
-                const incoming = activeTab === 'incoming';
-                const personName = incoming
-                  ? getRequesterName(request)
-                  : getRecipientName(request);
+                <button type="submit" className="requests-primary-button">
+                  Send Request
+                </button>
+              </div>
 
-                return (
-                  <article className="request-card" key={request.id}>
-                    <div className="request-person-avatar">
-                      {personName
-                        .split(' ')
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map((part) => part[0])
-                        .join('')
-                        .toUpperCase()}
-                    </div>
-
-                    <div className="request-card-content">
-                      <div className="request-card-topline">
-                        <div>
-                          <h3>{personName}</h3>
-                          <p className="request-date">
-                            {formatDate(request.createdAt || request.date)}
-                          </p>
-                        </div>
-
-                        <span className={`request-status ${status}`}>
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </span>
-                      </div>
-
-                      <div className="request-swap-details">
-                        <div>
-                          <span>{incoming ? 'THEY TEACH' : 'YOU TEACH'}</span>
-                          <strong>{getOfferedSkill(request)}</strong>
-                        </div>
-
-                        <span className="request-swap-arrow">⇄</span>
-
-                        <div>
-                          <span>
-                            {incoming
-                              ? 'THEY WANT TO LEARN'
-                              : 'YOU WANT TO LEARN'}
-                          </span>
-                          <strong>{getWantedSkill(request)}</strong>
-                        </div>
-                      </div>
-
-                      {request.note && (
-                        <p className="request-message">“{request.note}”</p>
-                      )}
-
-                      {status === 'pending' && incoming && (
-                        <div className="request-card-actions">
-                          <button
-                            type="button"
-                            className="request-accept-button"
-                            onClick={() =>
-                              changeRequestStatus(request.id, 'accepted')
-                            }
-                          >
-                            Accept request
-                          </button>
-
-                          <button
-                            type="button"
-                            className="request-reject-button"
-                            onClick={() =>
-                              changeRequestStatus(request.id, 'rejected')
-                            }
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      )}
-
-                      {status === 'pending' && !incoming && (
-                        <p className="request-waiting">
-                          Waiting for {personName} to respond.
-                        </p>
-                      )}
-
-                      {status === 'accepted' && (
-                        <div className="request-accepted-note">
-                          <span aria-hidden="true">✓</span>
-                          Request accepted. You can now plan your exchange.
-                        </div>
-                      )}
-
-                      {status === 'rejected' && (
-                        <p className="request-rejected-note">
-                          This request was rejected.
-                        </p>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      </main>
-
-      <Footer />
+              <p className="request-form-note">
+                This frontend demo saves the request in this browser. It does
+                not send a notification to another account.
+              </p>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

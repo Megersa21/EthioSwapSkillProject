@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/EditProfile.css';
 
@@ -11,29 +11,150 @@ const defaultProfile = {
   learnSkills: ['Node.js', 'UI/UX Design'],
   availability: 'Weekends',
   level: 'Intermediate',
+  profilePicture: '',
 };
+
+function loadProfile() {
+  try {
+    const saved = localStorage.getItem('swapSkillMyProfile');
+
+    if (!saved) return { ...defaultProfile };
+
+    const parsed = JSON.parse(saved);
+
+    return {
+      ...defaultProfile,
+      ...parsed,
+      teachSkills: Array.isArray(parsed.teachSkills)
+        ? parsed.teachSkills
+        : defaultProfile.teachSkills,
+      learnSkills: Array.isArray(parsed.learnSkills)
+        ? parsed.learnSkills
+        : defaultProfile.learnSkills,
+      profilePicture: parsed.profilePicture || '',
+    };
+  } catch {
+    return { ...defaultProfile };
+  }
+}
+
+// Resize uploaded images before saving them as browser storage data.
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error('Could not read this image.'));
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onerror = () => reject(new Error('Please select a valid image.'));
+      image.onload = () => {
+        const maxDimension = 400;
+        const scale = Math.min(
+          1,
+          maxDimension / Math.max(image.width, image.height),
+        );
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+
+        const context = canvas.getContext('2d');
+
+        if (!context) {
+          reject(new Error('Image processing is not supported.'));
+          return;
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        // JPEG reduces the storage size of most photographs.
+        resolve(canvas.toDataURL('image/jpeg', 0.78));
+      };
+
+      image.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
 
 function EditProfile() {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
-  const [profile, setProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem('swapSkillMyProfile');
-      return saved
-        ? { ...defaultProfile, ...JSON.parse(saved) }
-        : defaultProfile;
-    } catch {
-      return defaultProfile;
-    }
-  });
-
+  const [profile, setProfile] = useState(loadProfile);
   const [teachInput, setTeachInput] = useState('');
   const [learnInput, setLearnInput] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const [pictureError, setPictureError] = useState('');
+  const [isProcessingPicture, setIsProcessingPicture] = useState(false);
+
+  const initials =
+    profile.name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('') || 'U';
 
   function updateField(event) {
     const { name, value } = event.target;
+
     setProfile((current) => ({ ...current, [name]: value }));
+    setSavedMessage('');
+  }
+
+  async function handlePictureChange(event) {
+    const file = event.target.files?.[0];
+
+    // Allow choosing the same image again after removing it.
+    event.target.value = '';
+
+    if (!file) return;
+
+    setPictureError('');
+    setSavedMessage('');
+
+    if (!file.type.startsWith('image/')) {
+      setPictureError('Please select an image file.');
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setPictureError('Please choose an image smaller than 8 MB.');
+      return;
+    }
+
+    setIsProcessingPicture(true);
+
+    try {
+      const resizedPicture = await resizeImage(file);
+
+      setProfile((current) => ({
+        ...current,
+        profilePicture: resizedPicture,
+      }));
+    } catch (error) {
+      setPictureError(error.message || 'Unable to process this image.');
+    } finally {
+      setIsProcessingPicture(false);
+    }
+  }
+
+  function removePicture() {
+    setProfile((current) => ({
+      ...current,
+      profilePicture: '',
+    }));
+
+    setPictureError('');
+    setSavedMessage('');
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   function addSkill(field, value, clearInput) {
@@ -42,18 +163,26 @@ function EditProfile() {
     if (!skill) return;
 
     setProfile((current) => {
+      const existingSkills = Array.isArray(current[field])
+        ? current[field]
+        : [];
+
       if (
-        current[field].some(
+        existingSkills.some(
           (item) => item.toLowerCase() === skill.toLowerCase(),
         )
       ) {
         return current;
       }
 
-      return { ...current, [field]: [...current[field], skill] };
+      return {
+        ...current,
+        [field]: [...existingSkills, skill],
+      };
     });
 
     clearInput('');
+    setSavedMessage('');
   }
 
   function removeSkill(field, skill) {
@@ -61,13 +190,28 @@ function EditProfile() {
       ...current,
       [field]: current[field].filter((item) => item !== skill),
     }));
+
+    setSavedMessage('');
   }
 
   function saveProfile(event) {
     event.preventDefault();
+    setSavedMessage('');
 
-    localStorage.setItem('swapSkillMyProfile', JSON.stringify(profile));
-    setSavedMessage('Your profile changes have been saved.');
+    if (isProcessingPicture) {
+      setPictureError('Please wait until your picture finishes processing.');
+      return;
+    }
+
+    try {
+      localStorage.setItem('swapSkillMyProfile', JSON.stringify(profile));
+      setSavedMessage('Your profile changes have been saved.');
+      setPictureError('');
+    } catch {
+      setPictureError(
+        'Could not save your profile. Try a smaller picture or remove it.',
+      );
+    }
   }
 
   return (
@@ -85,6 +229,68 @@ function EditProfile() {
       </div>
 
       <form className="edit-profile-form" onSubmit={saveProfile}>
+        {/* Profile picture */}
+        <section className="edit-profile-card">
+          <h2>Profile Picture</h2>
+          <p className="edit-profile-description">
+            Add a photo so other members can recognize you. This is optional.
+          </p>
+
+          <div className="profile-picture-editor">
+            <div className="profile-picture-preview">
+              {profile.profilePicture ? (
+                <img src={profile.profilePicture} alt="Your profile preview" />
+              ) : (
+                <span>{initials}</span>
+              )}
+            </div>
+
+            <div className="profile-picture-controls">
+              <strong>{profile.name || 'Your profile'}</strong>
+              <p>
+                JPG, PNG, WebP, or another supported image format. Max 8 MB.
+              </p>
+
+              <div className="profile-picture-actions">
+                <button
+                  type="button"
+                  className="profile-picture-upload"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessingPicture}
+                >
+                  {isProcessingPicture ? 'Processing...' : 'Upload Picture'}
+                </button>
+
+                {profile.profilePicture && (
+                  <button
+                    type="button"
+                    className="profile-picture-remove"
+                    onClick={removePicture}
+                    disabled={isProcessingPicture}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePictureChange}
+                hidden
+              />
+
+              {pictureError && (
+                <p className="profile-picture-error" role="alert">
+                  {pictureError}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Personal information */}
         <section className="edit-profile-card">
           <h2>Personal Information</h2>
           <p className="edit-profile-description">
@@ -144,6 +350,7 @@ function EditProfile() {
           </div>
         </section>
 
+        {/* Teaching skills */}
         <section className="edit-profile-card">
           <h2>Skills I Can Teach</h2>
           <p className="edit-profile-description">
@@ -162,6 +369,7 @@ function EditProfile() {
                 }
               }}
             />
+
             <button
               type="button"
               onClick={() => addSkill('teachSkills', teachInput, setTeachInput)}
@@ -186,6 +394,7 @@ function EditProfile() {
           </div>
         </section>
 
+        {/* Learning skills */}
         <section className="edit-profile-card">
           <h2>Skills I Want to Learn</h2>
           <p className="edit-profile-description">
@@ -204,6 +413,7 @@ function EditProfile() {
                 }
               }}
             />
+
             <button
               type="button"
               onClick={() => addSkill('learnSkills', learnInput, setLearnInput)}
@@ -228,6 +438,7 @@ function EditProfile() {
           </div>
         </section>
 
+        {/* Availability */}
         <section className="edit-profile-card">
           <h2>Availability</h2>
           <p className="edit-profile-description">
@@ -265,8 +476,12 @@ function EditProfile() {
             Cancel
           </button>
 
-          <button type="submit" className="edit-profile-save">
-            Save Changes
+          <button
+            type="submit"
+            className="edit-profile-save"
+            disabled={isProcessingPicture}
+          >
+            {isProcessingPicture ? 'Processing Picture...' : 'Save Changes'}
           </button>
         </div>
       </form>

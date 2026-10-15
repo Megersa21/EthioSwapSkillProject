@@ -15,6 +15,7 @@ const sampleProfiles = {
     availability: 'Weekends',
     sessions: 12,
     rating: '4.9',
+    profilePicture: '',
   },
   2: {
     name: 'Meron Bekele',
@@ -28,6 +29,7 @@ const sampleProfiles = {
     availability: 'Evenings',
     sessions: 8,
     rating: '4.8',
+    profilePicture: '',
   },
   3: {
     name: 'Yonas Tesfaye',
@@ -41,6 +43,7 @@ const sampleProfiles = {
     availability: 'Flexible',
     sessions: 15,
     rating: '5.0',
+    profilePicture: '',
   },
 };
 
@@ -66,12 +69,23 @@ function getInitials(name = '') {
   );
 }
 
+function readRequests() {
+  try {
+    const saved = localStorage.getItem('swapSkillRequests');
+    const requests = saved ? JSON.parse(saved) : [];
+    return Array.isArray(requests) ? requests : [];
+  } catch {
+    return [];
+  }
+}
+
 function Profile() {
   const { id } = useParams();
   const isOwnProfile = id === 'me';
 
   const [savedProfile, setSavedProfile] = useState(readSavedProfile);
   const [requestSent, setRequestSent] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
 
   useEffect(() => {
     function refreshProfile() {
@@ -87,50 +101,105 @@ function Profile() {
     };
   }, []);
 
-  const profile =
-    isOwnProfile && savedProfile
-      ? {
-          ...savedProfile,
-          initials: getInitials(savedProfile.name),
-          teachSkills: Array.isArray(savedProfile.teachSkills)
-            ? savedProfile.teachSkills
-            : [],
-          learnSkills: Array.isArray(savedProfile.learnSkills)
-            ? savedProfile.learnSkills
-            : [],
-          sessions: savedProfile.sessions ?? 0,
-          rating: savedProfile.rating ?? 'New',
-        }
-      : sampleProfiles[id] || sampleProfiles[1];
+  const profile = isOwnProfile
+    ? {
+        ...(savedProfile || {}),
+        name: savedProfile?.name || 'Your Name',
+        initials: getInitials(savedProfile?.name),
+        title: savedProfile?.title || 'Skill Swap Member',
+        location: savedProfile?.location || 'Location not specified',
+        bio: savedProfile?.bio || '',
+        profilePicture: savedProfile?.profilePicture || '',
+        teachSkills: Array.isArray(savedProfile?.teachSkills)
+          ? savedProfile.teachSkills
+          : [],
+        learnSkills: Array.isArray(savedProfile?.learnSkills)
+          ? savedProfile.learnSkills
+          : [],
+        level: savedProfile?.level || 'Beginner',
+        availability: savedProfile?.availability || 'Not specified',
+        sessions: savedProfile?.sessions ?? 0,
+        rating: savedProfile?.rating ?? 'New',
+      }
+    : sampleProfiles[id] || sampleProfiles[1];
+
+  useEffect(() => {
+    if (isOwnProfile) return;
+
+    const alreadySent = readRequests().some(
+      (request) =>
+        request.direction === 'outgoing' &&
+        String(request.partnerId) === String(id) &&
+        request.status !== 'Cancelled' &&
+        request.status !== 'Rejected',
+    );
+
+    setRequestSent(alreadySent);
+  }, [id, isOwnProfile]);
 
   function sendRequest() {
     try {
-      const stored = localStorage.getItem('swapSkillRequests');
-      const existingRequests = stored ? JSON.parse(stored) : [];
+      const existingRequests = readRequests();
 
-      if (!Array.isArray(existingRequests)) {
-        throw new Error('Saved requests data is invalid.');
+      const alreadyExists = existingRequests.some(
+        (request) =>
+          request.direction === 'outgoing' &&
+          String(request.partnerId) === String(id) &&
+          request.status !== 'Cancelled' &&
+          request.status !== 'Rejected',
+      );
+
+      if (alreadyExists) {
+        setRequestSent(true);
+        setRequestMessage(
+          'You already have an active request for this member.',
+        );
+        return;
+      }
+
+      const ownProfile = readSavedProfile();
+
+      if (!ownProfile) {
+        setRequestMessage(
+          'Please create your profile before sending a request.',
+        );
+        return;
+      }
+
+      const offeredSkill = ownProfile.teachSkills?.[0];
+      const wantedSkill = profile.teachSkills?.[0];
+
+      if (!offeredSkill || !wantedSkill) {
+        setRequestMessage(
+          'Both you and this member need teaching skills before you can create a skill exchange.',
+        );
+        return;
       }
 
       const newRequest = {
-        id: Date.now(),
-        partner: profile.name,
-        partnerId: id,
-        teachSkill: profile.learnSkills[0] || 'Skill exchange',
-        learnSkill: profile.teachSkills[0] || 'Skill exchange',
+        id: `req-${Date.now()}`,
+        direction: 'outgoing',
+        partnerId: String(id),
+        name: profile.name,
+        initials: profile.initials,
+        location: profile.location,
+        offeredSkill,
+        wantedSkill,
+        message: `Hi ${profile.name}, I can teach you ${offeredSkill} and would like to learn ${wantedSkill} from you. Would you like to exchange skills?`,
+        date: new Date().toLocaleDateString('en-CA'),
         status: 'Pending',
-        direction: 'sent',
       };
 
       localStorage.setItem(
         'swapSkillRequests',
-        JSON.stringify([...existingRequests, newRequest]),
+        JSON.stringify([newRequest, ...existingRequests]),
       );
 
       setRequestSent(true);
+      setRequestMessage('Your skill-swap request has been created.');
     } catch (error) {
       console.error('Could not save skill swap request:', error);
-      alert('Could not save your request. Please try again.');
+      setRequestMessage('Could not save your request. Please try again.');
     }
   }
 
@@ -144,7 +213,17 @@ function Profile() {
       </Link>
 
       <section className="profile-hero">
-        <div className="profile-avatar">{profile.initials}</div>
+        <div className="profile-avatar">
+          {profile.profilePicture ? (
+            <img
+              className="profile-avatar-image"
+              src={profile.profilePicture}
+              alt={`${profile.name}'s profile`}
+            />
+          ) : (
+            <span>{profile.initials}</span>
+          )}
+        </div>
 
         <div className="profile-hero-info">
           <span className="profile-label">
@@ -185,6 +264,12 @@ function Profile() {
           )}
         </div>
       </section>
+
+      {requestMessage && (
+        <p className="profile-request-feedback" role="status">
+          {requestMessage}
+        </p>
+      )}
 
       <div className="profile-grid">
         <section className="profile-card profile-about">
