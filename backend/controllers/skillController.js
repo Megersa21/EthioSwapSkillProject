@@ -115,7 +115,16 @@ const discoverSkills = async (req, res) => {
       values.push(proficiency_level);
       conditions.push(`s.proficiency_level = $${values.length}`);
     }
+    console.log('Logged-in user ID:', req.user.userId);
+    console.log('Discover filters:', conditions);
+    console.log('Database name check starting...');
 
+    const dbInfo = await pool.query(`
+  SELECT current_database() AS database_name,
+         current_schema() AS schema_name
+`);
+
+    console.log('Backend database:', dbInfo.rows[0]);
     const result = await pool.query(
       `SELECT
          s.id,
@@ -132,6 +141,9 @@ const discoverSkills = async (req, res) => {
        ORDER BY s.created_at DESC`,
       values,
     );
+
+    console.log('Skills returned:', result.rows.length);
+    console.table(result.rows);
 
     return res.status(200).json({
       status: 'success',
