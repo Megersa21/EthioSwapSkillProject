@@ -1,8 +1,12 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '../styles/Auth.css';
 
+const API_URL = 'http://localhost:5000/api';
+
 export default function Register() {
+  const navigate = useNavigate();
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,10 +14,13 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError('');
+    setSuccess('');
 
     if (password !== confirmPassword) {
       setError('Passwords do not match. Please try again.');
@@ -25,9 +32,43 @@ export default function Register() {
       return;
     }
 
-    window.alert(
-      'Your registration form is working. Account creation will be connected when we build the backend.',
-    );
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Registration failed. Please try again.',
+        );
+      }
+
+      setSuccess('Account created successfully! You can now log in.');
+      setFullName('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      setAgreeToTerms(false);
+    } catch (err) {
+      setError(
+        err.message ||
+          'Unable to connect to the server. Check that your backend is running.',
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -131,8 +172,14 @@ export default function Register() {
             </p>
           )}
 
-          <button className="auth-button" type="submit">
-            Create account
+          {success && (
+            <p role="status" style={{ color: 'green' }}>
+              {success} <Link to="/login">Log in now</Link>
+            </p>
+          )}
+
+          <button className="auth-button" type="submit" disabled={loading}>
+            {loading ? 'Creating account...' : 'Create account'}
           </button>
         </form>
 

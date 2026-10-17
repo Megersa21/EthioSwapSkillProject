@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/AddSkill.css';
 
+const API_URL = 'http://localhost:5000/api/skills';
+
 export default function AddSkill() {
   const navigate = useNavigate();
 
@@ -15,6 +17,7 @@ export default function AddSkill() {
   });
 
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -27,8 +30,9 @@ export default function AddSkill() {
     setError('');
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setError('');
 
     if (
       form.teachSkill.trim().toLowerCase() ===
@@ -38,24 +42,90 @@ export default function AddSkill() {
       return;
     }
 
-    const existingSkills = JSON.parse(
-      localStorage.getItem('swapSkillListings') || '[]',
-    );
+    const token = localStorage.getItem('token');
 
-    const newSkill = {
-      id: Date.now(),
-      ...form,
-      createdAt: new Date().toISOString(),
+    if (!token) {
+      setError('Please log in before saving your skills.');
+      return;
+    }
+
+    setSaving(true);
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
     };
 
-    localStorage.setItem(
-      'swapSkillListings',
-      JSON.stringify([...existingSkills, newSkill]),
-    );
+    let teachSkillId = null;
 
-    window.alert('Your skill listing has been saved!');
+    try {
+      // Save the skill you can teach.
+      const teachResponse = await fetch(API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          skill_name: form.teachSkill.trim(),
+          description: form.teachDescription.trim(),
+          skill_type: 'teach',
+          proficiency_level: form.teachLevel,
+        }),
+      });
 
-    navigate('/dashboard');
+      const teachResult = await teachResponse.json();
+
+      if (!teachResponse.ok) {
+        throw new Error(
+          teachResult.message || 'Could not save the skill you can teach.',
+        );
+      }
+
+      teachSkillId = teachResult.skill?.id ?? teachResult.data?.id ?? null;
+
+      // Save the skill you want to learn.
+      const learnResponse = await fetch(API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          skill_name: form.learnSkill.trim(),
+          description: form.learnDescription.trim(),
+          skill_type: 'learn',
+          proficiency_level: null,
+        }),
+      });
+
+      const learnResult = await learnResponse.json();
+
+      if (!learnResponse.ok) {
+        // Avoid leaving only the first skill saved if cleanup is possible.
+        if (teachSkillId !== null) {
+          await fetch(`${API_URL}/${teachSkillId}`, {
+            method: 'DELETE',
+            headers,
+          }).catch(() => {});
+        }
+
+        throw new Error(
+          learnResult.message ||
+            'Your teaching skill was saved, but your learning skill failed. Please try again.',
+        );
+      }
+
+      // Keep availability locally for now; it is not part of the skill
+      // fields handled by the current backend controller.
+      localStorage.setItem('swapSkillAvailability', form.availability);
+
+      window.alert('Your teaching and learning skills have been saved!');
+
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Save skills error:', err);
+      setError(
+        err.message ||
+          'Could not connect to the server. Make sure your backend is running.',
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -198,14 +268,18 @@ export default function AddSkill() {
               Cancel
             </Link>
 
-            <button type="submit" className="save-skill-button">
-              Save skill listing →
+            <button
+              type="submit"
+              className="save-skill-button"
+              disabled={saving}
+            >
+              {saving ? 'Saving skills...' : 'Save skill listing →'}
             </button>
           </div>
 
           <p className="add-skill-note">
-            Your listing is saved in this browser for now. We will connect it to
-            the database when we build the backend.
+            Your teaching and learning skills are saved to your account.
+            Availability is stored in this browser for now.
           </p>
         </form>
       </div>

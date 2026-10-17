@@ -103,20 +103,13 @@ function SessionReview() {
 
   return (
     <main className="session-review-page">
-      <header className="review-header">
-        <a href="/" className="review-brand">
-          <span className="review-brand-icon">⇄</span>
-          <span>SwapSkill</span>
-        </a>
-
-        <button
-          type="button"
-          className="review-back-link"
-          onClick={() => navigate('/sessions')}
-        >
-          ← Back to sessions
-        </button>
-      </header>
+      <button
+        type="button"
+        className="review-back-link"
+        onClick={() => navigate('/sessions')}
+      >
+        ← Back to sessions
+      </button>
 
       <div className="review-container">
         <section className="review-completion">

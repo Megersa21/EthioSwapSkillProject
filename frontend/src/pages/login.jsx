@@ -1,18 +1,64 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '../styles/Auth.css';
 
+const API_URL = 'http://localhost:5000/api';
+
 export default function Login() {
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setError('');
+    setLoading(true);
 
-    window.alert(
-      'Your login form is working. Authentication will be connected when we build the backend.',
-    );
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Login failed. Please check your details.',
+        );
+      }
+
+      if (!result.token) {
+        throw new Error(
+          'Login succeeded, but the server did not return an authentication token.',
+        );
+      }
+
+      localStorage.setItem('token', result.token);
+
+      if (result.user) {
+        localStorage.setItem('user', JSON.stringify(result.user));
+      }
+
+      navigate('/dashboard');
+    } catch (err) {
+      setError(
+        err.message ||
+          'Unable to connect to the server. Check that your backend is running.',
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -69,9 +115,16 @@ export default function Login() {
             </div>
           </div>
 
-          <button className="auth-button" type="submit">
-            Log in
+          {error && (
+            <p role="alert" style={{ color: '#dc2626' }}>
+              {error}
+            </p>
+          )}
+
+          <button className="auth-button" type="submit" disabled={loading}>
+            {loading ? 'Logging in...' : 'Log in'}
           </button>
+
           <Link className="auth-forgot-bottom" to="/forgot-password">
             Forgot password?
           </Link>
@@ -82,7 +135,8 @@ export default function Login() {
         </div>
 
         <p className="auth-switch">
-          Don't have an account? <Link to="/register">Create an account</Link>
+          Don&apos;t have an account?{' '}
+          <Link to="/register">Create an account</Link>
         </p>
 
         <Link className="back-home" to="/">

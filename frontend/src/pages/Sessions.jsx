@@ -389,8 +389,7 @@ function Sessions() {
                       session.status !== 'Cancelled' && (
                         <>
                           {session.status === 'Confirmed' &&
-                            !session.invite &&
-                            index === 0 && (
+                            !session.invite && (
                               <button
                                 type="button"
                                 className="sessions-primary-button"
@@ -401,7 +400,8 @@ function Sessions() {
                                 Join room
                               </button>
                             )}
-                          {!session.invite && index !== 0 && (
+
+                          {!session.invite && (
                             <button
                               type="button"
                               className="sessions-outline-teal"
@@ -411,7 +411,6 @@ function Sessions() {
                             </button>
                           )}
 
-                          {/* Reschedule is intentionally shown for every non-cancelled upcoming session. */}
                           <button
                             type="button"
                             className="sessions-outline-button"
@@ -439,11 +438,13 @@ function Sessions() {
                           )}
                         </>
                       )}
+
                     {session.status === 'Cancelled' && (
                       <span className="session-cancelled-note">
                         This session has been cancelled.
                       </span>
                     )}
+
                     {session.category === 'past' && (
                       <button
                         type="button"

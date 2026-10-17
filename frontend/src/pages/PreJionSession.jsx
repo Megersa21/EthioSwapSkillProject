@@ -150,20 +150,13 @@ function PreJoinSession() {
 
   return (
     <main className="prejoin-page">
-      <header className="prejoin-header">
-        <a className="prejoin-brand" href="/">
-          <span className="prejoin-brand-icon">⇄</span>
-          <span>SwapSkill</span>
-        </a>
-
-        <button
-          type="button"
-          className="prejoin-back"
-          onClick={() => navigate('/sessions')}
-        >
-          ← Back to sessions
-        </button>
-      </header>
+      <button
+        type="button"
+        className="prejoin-back"
+        onClick={() => navigate('/sessions')}
+      >
+        ← Back to sessions
+      </button>
 
       <div className="prejoin-layout">
         <section className="prejoin-preview-column">
