@@ -19,6 +19,8 @@ import ScheduleSession from './pages/ScheduleSession.jsx';
 import PreJoinSession from './pages/PreJionSession.jsx';
 import LiveSessionRoom from './pages/LiveSessionRoom.jsx';
 import SessionReview from './pages/SessionReview.jsx';
+import MySkills from './pages/mySkill.jsx';
+import VideoCall from './pages/videoCall.jsx';
 
 import './App.css';
 
@@ -45,6 +47,8 @@ function App() {
         <Route path="/pre-join-session" element={<PreJoinSession />} />
         <Route path="/session-room" element={<LiveSessionRoom />} />
         <Route path="/session-review" element={<SessionReview />} />
+        <Route path="/my-skills" element={<MySkills />} />
+        <Route path="/video-call/:sessionId" element={<VideoCall />} />
       </Routes>
     </BrowserRouter>
   );

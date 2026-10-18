@@ -1,0 +1,253 @@
+.video-call-page {
+  min-height: 100vh;
+  background: #f5f8f7;
+  color: #182b28;
+  font-family: inherit;
+}
+
+.video-call-header {
+  min-height: 72px;
+  padding: 16px 5%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e4ebe8;
+}
+
+.video-call-brand {
+  color: #116b5b;
+  font-size: 20px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.video-call-session-label {
+  color: #64736e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.video-call-content {
+  width: min(1100px, 92%);
+  margin: 0 auto;
+  padding: 42px 0;
+}
+
+.video-call-heading {
+  margin-bottom: 26px;
+}
+
+.video-call-eyebrow {
+  color: #16816b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.video-call-heading h1 {
+  margin: 10px 0;
+  color: #172e29;
+  font-size: clamp(28px, 4vw, 38px);
+}
+
+.video-call-heading p {
+  color: #687771;
+  line-height: 1.6;
+}
+
+.video-call-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  padding: 9px 13px;
+  border-radius: 30px;
+  background: #e4f4ed;
+  color: #17694f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.video-call-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #20a36c;
+}
+
+.video-call-error {
+  margin: 18px 0;
+  padding: 14px 16px;
+  border: 1px solid #f2c4c4;
+  border-radius: 10px;
+  background: #fff0f0;
+  color: #a32828;
+  line-height: 1.5;
+}
+
+.video-call-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.video-tile {
+  position: relative;
+  min-height: 300px;
+  overflow: hidden;
+  border: 1px solid #dce6e1;
+  border-radius: 18px;
+  background: #172d29;
+  aspect-ratio: 16 / 10;
+}
+
+.video-feed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  object-fit: cover;
+  background: #172d29;
+}
+
+.video-tile-local .video-feed {
+  transform: scaleX(-1);
+}
+
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: #ffffff;
+  background: #203b35;
+}
+
+.video-placeholder h3 {
+  margin: 12px 0 4px;
+  color: #ffffff;
+}
+
+.video-placeholder p {
+  margin: 0;
+  color: #d1e0da;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.video-placeholder-avatar {
+  display: grid;
+  width: 66px;
+  height: 66px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d8eee5;
+  color: #176650;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.video-tile-label {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 60%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.video-call-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.video-control,
+.video-leave-button {
+  min-height: 46px;
+  padding: 12px 18px;
+  border: 1px solid #d7e2dc;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #263a33;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.video-control:hover {
+  background: #eaf3ef;
+}
+
+.video-control.is-off {
+  border-color: #e6b9b9;
+  background: #fff0f0;
+  color: #a32828;
+}
+
+.video-control:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.video-leave-button {
+  border-color: #c63838;
+  background: #c63838;
+  color: #ffffff;
+}
+
+.video-leave-button:hover {
+  background: #a92727;
+}
+
+.video-call-tip {
+  margin-top: 22px;
+  color: #77847e;
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .video-call-header {
+    padding: 14px 4%;
+  }
+
+  .video-call-brand {
+    font-size: 17px;
+  }
+
+  .video-call-content {
+    width: 92%;
+    padding: 28px 0;
+  }
+
+  .video-call-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .video-tile,
+  .video-feed {
+    min-height: 230px;
+  }
+
+  .video-call-controls {
+    gap: 9px;
+  }
+
+  .video-control,
+  .video-leave-button {
+    flex: 1 1 140px;
+  }
+}

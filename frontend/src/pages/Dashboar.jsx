@@ -1,557 +1,279 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Footer from '../components/Footer';
-import '../styles/Discover.css';
+import '../styles/Dashboard.css';
 
 const API_URL = 'http://localhost:5000/api';
-const PROFILE_KEY = 'swapSkillMyProfile';
 
-const popularSkills = [
-  'All skills',
-  'Web Development',
-  'UI/UX Design',
-  'JavaScript',
-  'English',
-  'Python',
-  'Graphic Design',
-];
-
-const avatarColors = ['lavender', 'mint', 'peach', 'blue'];
-
-function readProfile() {
-  try {
-    return JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function getInitials(name) {
-  return (name || 'Member')
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-}
-
-function uniqueSkills(skills) {
-  const seen = new Set();
-
-  return skills.filter((skill) => {
-    const key = skill.skill_name.trim().toLowerCase();
-
-    if (seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-}
-
-async function apiRequest(path, options = {}) {
+async function apiRequest(path) {
   const token = localStorage.getItem('token');
 
   if (!token) {
-    throw new Error('Please log in to discover skill partners.');
+    throw new Error('Please log in to view your dashboard.');
   }
 
   const response = await fetch(`${API_URL}${path}`, {
-    ...options,
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
     },
   });
 
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.message || 'The request could not be completed.');
+    throw new Error(result.message || 'Could not load dashboard data.');
   }
 
   return result;
 }
 
-function Discover() {
-  const [profile] = useState(readProfile);
-  const [partners, setPartners] = useState([]);
-  const [mySkills, setMySkills] = useState([]);
-  const [search, setSearch] = useState('');
-  const [selectedSkill, setSelectedSkill] = useState('All skills');
-  const [level, setLevel] = useState('All levels');
-  const [availability, setAvailability] = useState('Any time');
-  const [location, setLocation] = useState('');
-  const [sort, setSort] = useState('Best match');
-  const [feedback, setFeedback] = useState('');
+function Dashboard() {
+  const [skills, setSkills] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sendingTo, setSendingTo] = useState(null);
-  const [sentRequests, setSentRequests] = useState({});
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadSkills() {
-      setLoading(true);
-      setFeedback('');
-
+    async function loadDashboard() {
       try {
-        const [discoverResult, mySkillsResult] = await Promise.all([
-          apiRequest('/skills/discover'),
+        setLoading(true);
+        setError('');
+
+        const results = await Promise.allSettled([
           apiRequest('/skills/my-skills'),
+          apiRequest('/requests'),
         ]);
 
         if (cancelled) return;
 
-        const otherSkills = Array.isArray(discoverResult.skills)
-          ? discoverResult.skills
-          : [];
+        if (results[0].status === 'fulfilled') {
+          setSkills(results[0].value.skills || []);
+        } else {
+          setError(results[0].reason.message);
+        }
 
-        const ownSkills = Array.isArray(mySkillsResult.skills)
-          ? mySkillsResult.skills
-          : [];
-
-        setMySkills(ownSkills);
-
-        // Group database skill records into one card per user.
-        const grouped = new Map();
-
-        otherSkills.forEach((skill) => {
-          const userId = String(skill.user_id);
-
-          if (!grouped.has(userId)) {
-            grouped.set(userId, {
-              id: userId,
-              name: skill.user_name || 'EthioSwapSkill member',
-              teaches: [],
-              wants: [],
-              level: 'Not specified',
-              availability: 'Not specified',
-              location: 'Location not added',
-              rating: null,
-              swaps: null,
-              match: 0,
-            });
-          }
-
-          const person = grouped.get(userId);
-
-          if (skill.skill_type === 'teach') {
-            person.teaches.push(skill);
-          } else if (skill.skill_type === 'learn') {
-            person.wants.push(skill.skill_name);
-          }
-
-          if (
-            skill.skill_type === 'teach' &&
-            skill.proficiency_level &&
-            person.level === 'Not specified'
-          ) {
-            person.level = skill.proficiency_level;
-          }
-        });
-
-        const myLearningSkills = ownSkills
-          .filter((skill) => skill.skill_type === 'learn')
-          .map((skill) => skill.skill_name.toLowerCase());
-
-        const result = Array.from(grouped.values()).map((person, index) => {
-          person.teaches = uniqueSkills(person.teaches);
-
-          const sharedCount = person.teaches.filter((skill) =>
-            myLearningSkills.includes(skill.skill_name.toLowerCase()),
-          ).length;
-
-          person.match = myLearningSkills.length
-            ? Math.round((sharedCount / myLearningSkills.length) * 100)
-            : 0;
-
-          person.initials = getInitials(person.name);
-          person.color = avatarColors[index % avatarColors.length];
-
-          return person;
-        });
-
-        setPartners(result);
-      } catch (error) {
+        if (results[1].status === 'fulfilled') {
+          setRequests(results[1].value.requests || []);
+        } else if (results[0].status === 'fulfilled') {
+          setError(results[1].reason.message);
+        }
+      } catch (err) {
         if (!cancelled) {
-          console.error('Discover loading error:', error);
-          setFeedback(error.message || 'Could not load skill partners.');
+          setError(err.message || 'Could not load your dashboard.');
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    loadSkills();
+    loadDashboard();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const filteredPartners = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const locationQuery = location.trim().toLowerCase();
+  const teachingSkills = skills.filter((skill) => skill.skill_type === 'teach');
 
-    let results = partners.filter((person) => {
-      const teaches = person.teaches.map((skill) => skill.skill_name);
-      const skills = [...teaches, ...person.wants];
+  const learningSkills = skills.filter((skill) => skill.skill_type === 'learn');
 
-      return (
-        (!query ||
-          person.name.toLowerCase().includes(query) ||
-          person.location.toLowerCase().includes(query) ||
-          skills.some((skill) => skill.toLowerCase().includes(query))) &&
-        (selectedSkill === 'All skills' ||
-          skills.some(
-            (skill) => skill.toLowerCase() === selectedSkill.toLowerCase(),
-          )) &&
-        (level === 'All levels' || person.level === level) &&
-        (availability === 'Any time' || person.availability === availability) &&
-        (!locationQuery ||
-          person.location.toLowerCase().includes(locationQuery))
-      );
-    });
+  const pendingRequests = requests.filter(
+    (request) => request.status === 'pending',
+  );
 
-    if (sort === 'Highest rated') {
-      results = [...results].sort((a, b) => (b.rating || 0) - (a.rating || 0));
-    } else if (sort === 'Most swaps') {
-      results = [...results].sort((a, b) => (b.swaps || 0) - (a.swaps || 0));
-    } else {
-      results = [...results].sort((a, b) => b.match - a.match);
-    }
+  const acceptedRequests = requests.filter(
+    (request) => request.status === 'accepted',
+  );
 
-    return results;
-  }, [partners, search, selectedSkill, level, availability, location, sort]);
-
-  function clearFilters() {
-    setSearch('');
-    setSelectedSkill('All skills');
-    setLevel('All levels');
-    setAvailability('Any time');
-    setLocation('');
-    setSort('Best match');
-  }
-
-  async function sendRequest(person) {
-    setFeedback('');
-
-    if (sendingTo !== null) return;
-
-    if (sentRequests[person.id]) {
-      setFeedback(`Your request to ${person.name} has already been sent.`);
-      return;
-    }
-
-    // The backend requires one of your teach skills and one of
-    // the other user's teach skills.
-    const offeredSkill = mySkills.find((skill) => skill.skill_type === 'teach');
-
-    const wantedSkill = person.teaches[0];
-
-    if (!offeredSkill) {
-      setFeedback(
-        'Add a skill under "What can you teach?" before sending a request.',
-      );
-      return;
-    }
-
-    if (!wantedSkill) {
-      setFeedback(
-        `${person.name} has no teaching skill available for a swap request yet.`,
-      );
-      return;
-    }
-
-    setSendingTo(person.id);
-
-    try {
-      const result = await apiRequest('/requests', {
-        method: 'POST',
-        body: JSON.stringify({
-          offered_skill_id: offeredSkill.id,
-          wanted_skill_id: wantedSkill.id,
-          note: `Hello ${person.name}, I would like to exchange skills with you.`,
-        }),
-      });
-
-      setSentRequests((previous) => ({
-        ...previous,
-        [person.id]: true,
-      }));
-
-      setFeedback(
-        result.message ||
-          `Your request to ${person.name} was sent successfully.`,
-      );
-    } catch (error) {
-      console.error('Send swap request error:', error);
-      setFeedback(error.message || 'Could not send your swap request.');
-    } finally {
-      setSendingTo(null);
-    }
-  }
+  const displayName =
+    localStorage.getItem('userName') ||
+    localStorage.getItem('name') ||
+    'Skill Swapper';
 
   return (
     <>
-      <main className="discover-page">
-        <section className="discover-heading">
-          <span className="discover-eyebrow">YOUR NEXT SKILL STARTS HERE</span>
-          <h1>Discover your next skill partner</h1>
+      <main className="dashboard-page">
+        <section className="dashboard-welcome">
+          <span className="dashboard-eyebrow">YOUR SKILL JOURNEY</span>
+          <h1>Welcome back, {displayName}!</h1>
           <p>
-            Connect with people who can teach you something new. Share what you
-            know and learn together.
+            Manage your skills, connect with learners, and keep your skill
+            exchanges moving forward.
           </p>
 
-          <div className="discover-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              aria-label="Search skills or people"
-              placeholder="Search skills, people, or locations..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <button type="button" onClick={() => {}}>
-              Search
-            </button>
+          <div className="dashboard-actions">
+            <Link to="/discover" className="dashboard-primary-button">
+              Discover skill partners
+            </Link>
+            <Link to="/my-skills" className="dashboard-secondary-button">
+              Manage my skills
+            </Link>
           </div>
         </section>
 
-        <section className="discover-content">
-          <div className="popular-skills">
-            <h2>Popular skills</h2>
-            <div className="skill-chips">
-              {popularSkills.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  className={
-                    selectedSkill === skill ? 'skill-chip active' : 'skill-chip'
-                  }
-                  onClick={() => setSelectedSkill(skill)}
-                >
-                  {skill}
-                </button>
+        {error && (
+          <div className="dashboard-alert" role="alert">
+            {error}
+          </div>
+        )}
+
+        <section className="dashboard-stats">
+          <article className="dashboard-stat-card">
+            <span className="dashboard-stat-icon">✦</span>
+            <p>Skills I teach</p>
+            <strong>{loading ? '—' : teachingSkills.length}</strong>
+            <span>Skills you can share</span>
+          </article>
+
+          <article className="dashboard-stat-card">
+            <span className="dashboard-stat-icon">◎</span>
+            <p>Skills I want to learn</p>
+            <strong>{loading ? '—' : learningSkills.length}</strong>
+            <span>Your learning goals</span>
+          </article>
+
+          <article className="dashboard-stat-card">
+            <span className="dashboard-stat-icon">⇄</span>
+            <p>Pending requests</p>
+            <strong>{loading ? '—' : pendingRequests.length}</strong>
+            <span>Waiting for a response</span>
+          </article>
+
+          <article className="dashboard-stat-card">
+            <span className="dashboard-stat-icon">✓</span>
+            <p>Accepted requests</p>
+            <strong>{loading ? '—' : acceptedRequests.length}</strong>
+            <span>Ready to move forward</span>
+          </article>
+        </section>
+
+        <section className="dashboard-main-grid">
+          <article className="dashboard-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <h2>My teaching skills</h2>
+                <p>Knowledge you can share with others.</p>
+              </div>
+              <Link to="/my-skills">View all →</Link>
+            </div>
+
+            {loading ? (
+              <p className="dashboard-muted">Loading your skills...</p>
+            ) : teachingSkills.length ? (
+              <div className="dashboard-skill-list">
+                {teachingSkills.slice(0, 4).map((skill) => (
+                  <div className="dashboard-skill-item" key={skill.id}>
+                    <span className="dashboard-skill-symbol">✦</span>
+                    <div>
+                      <h3>{skill.skill_name}</h3>
+                      <p>{skill.proficiency_level || 'Level not specified'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-empty">
+                <p>You have not added any teaching skills yet.</p>
+                <Link to="/my-skills">Add a teaching skill</Link>
+              </div>
+            )}
+          </article>
+
+          <article className="dashboard-panel">
+            <div className="dashboard-panel-heading">
+              <div>
+                <h2>Learning goals</h2>
+                <p>Skills you would like to learn.</p>
+              </div>
+              <Link to="/my-skills">Manage →</Link>
+            </div>
+
+            {loading ? (
+              <p className="dashboard-muted">Loading your goals...</p>
+            ) : learningSkills.length ? (
+              <div className="dashboard-skill-list">
+                {learningSkills.slice(0, 4).map((skill) => (
+                  <div className="dashboard-skill-item" key={skill.id}>
+                    <span className="dashboard-skill-symbol learning">◎</span>
+                    <div>
+                      <h3>{skill.skill_name}</h3>
+                      <p>{skill.proficiency_level || 'Learning goal'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-empty">
+                <p>You have not added any learning goals yet.</p>
+                <Link to="/my-skills">Add a learning goal</Link>
+              </div>
+            )}
+          </article>
+        </section>
+
+        <section className="dashboard-panel dashboard-requests-panel">
+          <div className="dashboard-panel-heading">
+            <div>
+              <h2>Recent swap requests</h2>
+              <p>Keep track of your skill exchange activity.</p>
+            </div>
+            <Link to="/requests">View requests →</Link>
+          </div>
+
+          {loading ? (
+            <p className="dashboard-muted">Loading requests...</p>
+          ) : requests.length ? (
+            <div className="dashboard-request-list">
+              {requests.slice(0, 5).map((request) => (
+                <div className="dashboard-request-item" key={request.id}>
+                  <div className="dashboard-request-icon">⇄</div>
+                  <div className="dashboard-request-info">
+                    <h3>
+                      {request.sender_name ||
+                        request.requester_name ||
+                        request.receiver_name ||
+                        'Skill swap request'}
+                    </h3>
+                    <p>
+                      {request.offered_skill_name || 'Skill exchange'}{' '}
+                      {request.wanted_skill_name
+                        ? `↔ ${request.wanted_skill_name}`
+                        : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`dashboard-status dashboard-status-${(
+                      request.status || 'pending'
+                    ).toLowerCase()}`}
+                  >
+                    {request.status || 'pending'}
+                  </span>
+                </div>
               ))}
             </div>
-          </div>
-
-          <div className="discover-layout">
-            <aside className="discover-filters">
-              <div className="filter-heading">
-                <h2>Filters</h2>
-                <button type="button" onClick={clearFilters}>
-                  Clear all
-                </button>
-              </div>
-
-              <label htmlFor="filter-level">Skill level</label>
-              <select
-                id="filter-level"
-                value={level}
-                onChange={(event) => setLevel(event.target.value)}
-              >
-                <option>All levels</option>
-                <option>Beginner</option>
-                <option>Intermediate</option>
-                <option>Advanced</option>
-                <option>Expert</option>
-                <option>Not specified</option>
-              </select>
-
-              <label htmlFor="filter-availability">Availability</label>
-              <select
-                id="filter-availability"
-                value={availability}
-                onChange={(event) => setAvailability(event.target.value)}
-              >
-                <option>Any time</option>
-                <option>Not specified</option>
-              </select>
-
-              <label htmlFor="filter-location">Location</label>
-              <input
-                id="filter-location"
-                type="text"
-                placeholder="Enter a city"
-                value={location}
-                onChange={(event) => setLocation(event.target.value)}
-              />
-
-              <div className="filter-note">
-                <span aria-hidden="true">⇄</span>
-                <strong>Skills are better shared.</strong>
-                <p>
-                  Find someone to learn from and share your knowledge in return.
-                </p>
-              </div>
-            </aside>
-
-            <div className="discover-results">
-              <div className="results-toolbar">
-                <div>
-                  <h2>Skill partners</h2>
-                  <p>
-                    {loading
-                      ? 'Loading real skill partners...'
-                      : `${filteredPartners.length} ${
-                          filteredPartners.length === 1 ? 'partner' : 'partners'
-                        } found`}
-                  </p>
-                </div>
-
-                <label className="sort-control">
-                  <span>Sort by</span>
-                  <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value)}
-                    aria-label="Sort partners"
-                  >
-                    <option>Best match</option>
-                    <option>Highest rated</option>
-                    <option>Most swaps</option>
-                  </select>
-                </label>
-              </div>
-
-              {feedback && (
-                <p className="discover-feedback" role="status">
-                  {feedback}
-                </p>
-              )}
-
-              {loading ? (
-                <div className="discover-empty">
-                  <h3>Loading skill partners...</h3>
-                  <p>Connecting to the EthioSwapSkill database.</p>
-                </div>
-              ) : feedback && partners.length === 0 ? (
-                <div className="discover-empty">
-                  <h3>Could not load skill partners</h3>
-                  <p>
-                    Check that you're logged in and your backend is running.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => window.location.reload()}
-                  >
-                    Try again
-                  </button>
-                </div>
-              ) : filteredPartners.length ? (
-                <div className="partner-grid">
-                  {filteredPartners.map((person) => (
-                    <article className="partner-card" key={person.id}>
-                      <div className="partner-card-top">
-                        <div className={`partner-avatar ${person.color}`}>
-                          {person.initials}
-                        </div>
-                        <div className="partner-match">
-                          <strong>
-                            {person.match > 0 ? `${person.match}%` : 'Member'}
-                          </strong>
-                          <span>
-                            {person.match > 0 ? 'skill match' : 'skill partner'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h3>{person.name}</h3>
-                      <p className="partner-location">
-                        <span aria-hidden="true">⌖</span> {person.location}
-                      </p>
-
-                      <div className="partner-stats">
-                        <span>Rating not available yet</span>
-                      </div>
-
-                      <div className="partner-skills">
-                        <h4>Can teach you</h4>
-                        <div className="partner-tags">
-                          {person.teaches.length ? (
-                            person.teaches.map((skill) => (
-                              <span className="teach-tag" key={skill.id}>
-                                {skill.skill_name}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="teach-tag">
-                              No teaching skills added
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="partner-skills">
-                        <h4>Wants to learn</h4>
-                        <div className="partner-tags">
-                          {person.wants.length ? (
-                            person.wants.map((skill) => (
-                              <span className="want-tag" key={skill}>
-                                {skill}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="want-tag">
-                              No learning skills added
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="partner-card-footer">
-                        <span>{person.level}</span>
-                        <span>{person.availability}</span>
-                      </div>
-
-                      <Link
-                        className="partner-profile-link"
-                        to={`/profile/${person.id}`}
-                      >
-                        View profile
-                        <span aria-hidden="true"> →</span>
-                      </Link>
-
-                      <button
-                        type="button"
-                        className="partner-request-button"
-                        disabled={
-                          sendingTo !== null || Boolean(sentRequests[person.id])
-                        }
-                        onClick={() => sendRequest(person)}
-                      >
-                        {sendingTo === person.id
-                          ? 'Sending request...'
-                          : sentRequests[person.id]
-                            ? 'Request sent'
-                            : 'Send skill-swap request'}
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="discover-empty">
-                  <span aria-hidden="true">⌕</span>
-                  <h3>No skill partners found</h3>
-                  <p>
-                    Real users who have listed skills will appear here. You may
-                    need a second account to test Discover.
-                  </p>
-                  <button type="button" onClick={clearFilters}>
-                    Clear filters
-                  </button>
-                </div>
-              )}
+          ) : (
+            <div className="dashboard-empty">
+              <p>No swap requests yet. Discover people to start an exchange.</p>
+              <Link to="/discover">Find a skill partner</Link>
             </div>
+          )}
+        </section>
+
+        <section className="dashboard-next-step">
+          <div>
+            <span>READY FOR YOUR NEXT EXCHANGE?</span>
+            <h2>Your next skill starts with a connection.</h2>
+            <p>Find someone to learn from and share what you know.</p>
           </div>
+          <Link to="/discover">Explore skills →</Link>
         </section>
       </main>
+
       <Footer />
     </>
   );
 }
 
-export default Discover;
+export default Dashboard;

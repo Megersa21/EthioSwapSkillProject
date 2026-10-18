@@ -54,6 +54,7 @@ function Navbar() {
     { label: 'Requests', path: '/requests' },
     { label: 'Sessions', path: '/sessions' },
     { label: 'Messages', path: '/messages' },
+    { label: 'MySkills', path: '/my-skills' },
   ];
 
   function closeMenu() {

@@ -1,73 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Footer from '../components/Footer';
 import '../styles/Discover.css';
 
+const API_URL = 'http://localhost:5000/api';
 const PROFILE_KEY = 'swapSkillMyProfile';
-const LISTINGS_KEY = 'swapSkillListings';
-const REQUESTS_KEY = 'swapSkillRequests';
-const NOTIFICATIONS_KEY = 'swapSkillNotifications';
+const AVATAR_COLORS = ['lavender', 'mint', 'peach', 'blue'];
 
-const samplePartners = [
-  {
-    id: 1,
-    name: 'Hana Bekele',
-    initials: 'HB',
-    location: 'Addis Ababa',
-    teaches: ['UI/UX Design', 'Figma'],
-    wants: ['React', 'JavaScript'],
-    level: 'Intermediate',
-    availability: 'Weekends',
-    rating: 4.9,
-    swaps: 12,
-    match: 92,
-    color: 'lavender',
-  },
-  {
-    id: 2,
-    name: 'Dawit Alemu',
-    initials: 'DA',
-    location: 'Dire Dawa',
-    teaches: ['JavaScript', 'React'],
-    wants: ['UI/UX Design', 'Figma'],
-    level: 'Advanced',
-    availability: 'Evenings',
-    rating: 4.8,
-    swaps: 9,
-    match: 88,
-    color: 'mint',
-  },
-  {
-    id: 3,
-    name: 'Sara Mohammed',
-    initials: 'SM',
-    location: 'Hawassa',
-    teaches: ['English', 'Public Speaking'],
-    wants: ['Web Development', 'Python'],
-    level: 'Intermediate',
-    availability: 'Weekends',
-    rating: 4.7,
-    swaps: 7,
-    match: 85,
-    color: 'peach',
-  },
-  {
-    id: 4,
-    name: 'Yonas Tadesse',
-    initials: 'YT',
-    location: 'Addis Ababa',
-    teaches: ['Python', 'Web Development'],
-    wants: ['English', 'Public Speaking'],
-    level: 'Beginner',
-    availability: 'Evenings',
-    rating: 4.8,
-    swaps: 6,
-    match: 81,
-    color: 'blue',
-  },
-];
-
-const popularSkills = [
+const POPULAR_SKILLS = [
   'All skills',
   'Web Development',
   'UI/UX Design',
@@ -77,42 +17,55 @@ const popularSkills = [
   'Graphic Design',
 ];
 
-function readStorage(key, fallback) {
+function readProfile() {
   try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : JSON.parse(value);
-  } catch (error) {
-    console.error(`Could not read ${key}:`, error);
-    return fallback;
+    return JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
+  } catch {
+    return {};
   }
 }
 
-function writeStorage(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch (error) {
-    console.error(`Could not save ${key}:`, error);
-    return false;
+async function apiRequest(path, options = {}) {
+  const token = localStorage.getItem('token');
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      result.message ||
+        result.error ||
+        `Request failed with status ${response.status}`,
+    );
   }
+
+  return result;
 }
 
-function uniqueSkills(skills) {
-  const seen = new Set();
+function normalizeSkillType(type) {
+  return String(type || '')
+    .trim()
+    .toLowerCase();
+}
 
-  return skills
-    .filter((skill) => {
-      if (typeof skill !== 'string' || !skill.trim()) return false;
-      const normalized = skill.trim().toLowerCase();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
-      return true;
-    })
-    .map((skill) => skill.trim());
+function normalizeLevel(level) {
+  if (!level) return 'Not specified';
+
+  const value = String(level).trim().toLowerCase();
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function getInitials(name) {
-  return (name || 'You')
+  return (name || 'Member')
     .trim()
     .split(/\s+/)
     .slice(0, 2)
@@ -121,30 +74,36 @@ function getInitials(name) {
     .toUpperCase();
 }
 
-function createId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+function getSkillsFromResponse(result) {
+  return Array.isArray(result.skills) ? result.skills : [];
 }
 
-function getRequestStatus(requests, person) {
+function getRequestsFromResponse(result) {
+  return Array.isArray(result.requests) ? result.requests : [];
+}
+
+function getRequestStatus(requests, partnerId) {
   const matching = requests.filter((request) => {
-    const direction = String(request.direction || '').toLowerCase();
-    if (!['sent', 'outgoing'].includes(direction)) return false;
+    const recipientId = request.recipient_id ?? request.recipientId;
+    const status = String(request.status || '').toLowerCase();
 
     return (
-      String(request.receiverId || '') === String(person.id) ||
-      String(request.receiverName || '').toLowerCase() ===
-        person.name.toLowerCase()
+      String(recipientId) === String(partnerId) &&
+      ['pending', 'accepted'].includes(status)
     );
   });
 
-  if (matching.some((request) => request.status === 'accepted')) {
+  if (
+    matching.some(
+      (request) => String(request.status).toLowerCase() === 'accepted',
+    )
+  ) {
     return 'accepted';
   }
 
   if (
     matching.some(
-      (request) =>
-        String(request.status || 'pending').toLowerCase() === 'pending',
+      (request) => String(request.status).toLowerCase() === 'pending',
     )
   ) {
     return 'pending';
@@ -154,9 +113,10 @@ function getRequestStatus(requests, person) {
 }
 
 function Discover() {
-  const [profile, setProfile] = useState(() => readStorage(PROFILE_KEY, {}));
-  const [listings, setListings] = useState(() => readStorage(LISTINGS_KEY, []));
-  const [requests, setRequests] = useState(() => readStorage(REQUESTS_KEY, []));
+  const [profile] = useState(readProfile);
+  const [mySkills, setMySkills] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [requests, setRequests] = useState([]);
 
   const [search, setSearch] = useState('');
   const [selectedSkill, setSelectedSkill] = useState('All skills');
@@ -164,76 +124,138 @@ function Discover() {
   const [availability, setAvailability] = useState('Any time');
   const [location, setLocation] = useState('');
   const [sort, setSort] = useState('Best match');
+
+  const [loading, setLoading] = useState(true);
+  const [sendingTo, setSendingTo] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    function refresh() {
-      setProfile(readStorage(PROFILE_KEY, {}));
+  const loadDiscoverData = useCallback(async () => {
+    setLoading(true);
+    setError('');
 
-      const savedListings = readStorage(LISTINGS_KEY, []);
-      setListings(Array.isArray(savedListings) ? savedListings : []);
+    try {
+      const [discoverResult, mySkillsResult, requestsResult] =
+        await Promise.all([
+          apiRequest('/skills/discover'),
+          apiRequest('/skills/my-skills'),
+          apiRequest('/requests?direction=sent'),
+        ]);
 
-      const savedRequests = readStorage(REQUESTS_KEY, []);
-      setRequests(Array.isArray(savedRequests) ? savedRequests : []);
+      const discoveredSkills = getSkillsFromResponse(discoverResult);
+      const ownSkills = getSkillsFromResponse(mySkillsResult);
+      const sentRequests = getRequestsFromResponse(requestsResult);
+
+      setMySkills(ownSkills);
+      setRequests(sentRequests);
+
+      // Group the partner's skill records into one card per user.
+      const grouped = new Map();
+
+      discoveredSkills.forEach((skill) => {
+        const userId = skill.user_id ?? skill.userId;
+
+        if (userId == null) return;
+
+        const key = String(userId);
+
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            id: key,
+            name: skill.user_name || skill.full_name || 'SkillSwap member',
+            initials: getInitials(
+              skill.user_name || skill.full_name || 'Member',
+            ),
+            location: skill.location || 'Location not provided',
+            teaches: [],
+            teachSkillIds: [],
+            wants: [],
+            levels: [],
+            availability: skill.availability || 'Not specified',
+            rating: null,
+            swaps: null,
+            color: AVATAR_COLORS[grouped.size % AVATAR_COLORS.length],
+          });
+        }
+
+        const person = grouped.get(key);
+        const skillName = String(skill.skill_name || '').trim();
+
+        if (!skillName) return;
+
+        const type = normalizeSkillType(skill.skill_type);
+        if (type === 'teach') {
+          if (
+            !person.teaches.some(
+              (name) => name.toLowerCase() === skillName.toLowerCase(),
+            )
+          ) {
+            person.teaches.push(skillName);
+            person.teachSkillIds.push(skill.id);
+            person.levels.push(normalizeLevel(skill.proficiency_level));
+          }
+        } else if (type === 'learn') {
+          if (
+            !person.wants.some(
+              (name) => name.toLowerCase() === skillName.toLowerCase(),
+            )
+          ) {
+            person.wants.push(skillName);
+          }
+        }
+      });
+
+      const ownTeachSkills = ownSkills.filter(
+        (skill) => normalizeSkillType(skill.skill_type) === 'teach',
+      );
+
+      const ownLearnNames = ownSkills
+        .filter((skill) => normalizeSkillType(skill.skill_type) === 'learn')
+        .map((skill) => String(skill.skill_name || '').toLowerCase());
+
+      const formattedPartners = Array.from(grouped.values()).map((person) => {
+        const matchingSkills = person.teaches.filter((skill) =>
+          ownLearnNames.includes(skill.toLowerCase()),
+        );
+
+        const match =
+          person.teaches.length > 0
+            ? Math.round((matchingSkills.length / person.teaches.length) * 100)
+            : 0;
+
+        return {
+          ...person,
+          level: person.levels[0] || 'Not specified',
+          match,
+          matchingSkills,
+        };
+      });
+
+      setPartners(formattedPartners);
+    } catch (requestError) {
+      setError(requestError.message || 'Could not load skill partners.');
+    } finally {
+      setLoading(false);
     }
-
-    window.addEventListener('storage', refresh);
-    window.addEventListener('focus', refresh);
-    window.addEventListener('swapSkillRequestsUpdated', refresh);
-
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('swapSkillRequestsUpdated', refresh);
-    };
   }, []);
 
-  const myPartnerProfile = useMemo(() => {
-    const validListings = Array.isArray(listings) ? listings : [];
-    const teaches = uniqueSkills(validListings.map((item) => item.teachSkill));
-    const wants = uniqueSkills(validListings.map((item) => item.learnSkill));
+  useEffect(() => {
+    loadDiscoverData();
+  }, [loadDiscoverData]);
 
-    const hasProfile =
-      profile &&
-      typeof profile === 'object' &&
-      (profile.name ||
-        profile.fullName ||
-        profile.location ||
-        profile.bio ||
-        teaches.length ||
-        wants.length);
-
-    if (!hasProfile) return null;
-
-    const firstListing = validListings[0] || {};
-
-    return {
-      id: 'me',
-      name: profile.name || profile.fullName || 'Your profile',
-      initials: getInitials(profile.name || profile.fullName || 'You'),
-      location: profile.location || 'Location not added',
-      teaches,
-      wants,
-      level: firstListing.teachLevel || 'Not specified',
-      availability: firstListing.availability || 'Flexible',
-      rating: null,
-      swaps: null,
-      match: null,
-      color: 'mint',
-      isOwnProfile: true,
-    };
-  }, [profile, listings]);
-
-  const allPartners = useMemo(
-    () => [...(myPartnerProfile ? [myPartnerProfile] : []), ...samplePartners],
-    [myPartnerProfile],
+  const myTeachSkills = useMemo(
+    () =>
+      mySkills.filter(
+        (skill) => normalizeSkillType(skill.skill_type) === 'teach',
+      ),
+    [mySkills],
   );
 
   const filteredPartners = useMemo(() => {
     const query = search.trim().toLowerCase();
     const locationQuery = location.trim().toLowerCase();
 
-    let results = allPartners.filter((person) => {
+    let results = partners.filter((person) => {
       const skills = [...person.teaches, ...person.wants];
 
       return (
@@ -246,22 +268,23 @@ function Discover() {
             (skill) => skill.toLowerCase() === selectedSkill.toLowerCase(),
           )) &&
         (level === 'All levels' || person.level === level) &&
-        (availability === 'Any time' || person.availability === availability) &&
+        (availability === 'Any time' ||
+          person.availability.toLowerCase() === availability.toLowerCase()) &&
         (!locationQuery ||
           person.location.toLowerCase().includes(locationQuery))
       );
     });
 
-    if (sort === 'Highest rated') {
+    if (sort === 'Best match') {
+      results = [...results].sort((a, b) => b.match - a.match);
+    } else if (sort === 'Highest rated') {
       results = [...results].sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (sort === 'Most swaps') {
       results = [...results].sort((a, b) => (b.swaps || 0) - (a.swaps || 0));
-    } else {
-      results = [...results].sort((a, b) => (b.match || 0) - (a.match || 0));
     }
 
     return results;
-  }, [allPartners, search, selectedSkill, level, availability, location, sort]);
+  }, [partners, search, selectedSkill, level, availability, location, sort]);
 
   function clearFilters() {
     setSearch('');
@@ -272,91 +295,90 @@ function Discover() {
     setSort('Best match');
   }
 
-  function sendRequest(person) {
+  async function sendRequest(person) {
     setFeedback('');
+    setError('');
 
-    if (person.isOwnProfile) {
-      setFeedback('You cannot send a request to your own profile.');
+    if (!myTeachSkills.length) {
+      setFeedback(
+        'Add at least one skill you can teach in My Skills before sending a request.',
+      );
       return;
     }
 
-    const saved = readStorage(REQUESTS_KEY, []);
-    const currentRequests = Array.isArray(saved) ? saved : [];
-
-    const duplicate = currentRequests.some((request) => {
-      const direction = String(request.direction || '').toLowerCase();
-      const samePartner =
-        String(request.receiverId || '') === String(person.id) ||
-        (['sent', 'outgoing'].includes(direction) &&
-          String(request.receiverName || '').toLowerCase() ===
-            person.name.toLowerCase());
+    const existingRequest = requests.find((request) => {
+      const recipientId = request.recipient_id ?? request.recipientId;
 
       return (
-        samePartner &&
+        String(recipientId) === String(person.id) &&
         ['pending', 'accepted'].includes(
-          String(request.status || 'pending').toLowerCase(),
+          String(request.status || '').toLowerCase(),
         )
       );
     });
 
-    if (duplicate) {
-      setRequests(currentRequests);
+    if (existingRequest) {
       setFeedback(
-        `You already have a pending or accepted request with ${person.name}.`,
+        `Your request to ${person.name} is already ${existingRequest.status}.`,
       );
       return;
     }
 
-    const myName =
-      profile?.name ||
-      profile?.fullName ||
-      profile?.displayName ||
-      'SwapSkill member';
-
-    const newRequest = {
-      id: createId(),
-      direction: 'sent',
-      senderId: String(profile?.id || 'me'),
-      senderName: myName,
-      receiverId: String(person.id),
-      receiverName: person.name,
-      teachSkill: person.wants[0] || 'Skill exchange',
-      learnSkill: person.teaches[0] || 'Skill exchange',
-      note: `Hello ${person.name}, I would like to exchange skills with you.`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-
-    const updatedRequests = [newRequest, ...currentRequests];
-
-    if (!writeStorage(REQUESTS_KEY, updatedRequests)) {
-      setFeedback('Could not save your request. Please try again.');
+    // A wanted skill must be one of the partner's teaching skills.
+    if (!person.teaches.length) {
+      setFeedback(`${person.name} has no teaching skills available yet.`);
       return;
     }
 
-    setRequests(updatedRequests);
+    const offeredSkill = myTeachSkills[0];
+    const wantedSkill = partners.find(
+      (partner) => String(partner.id) === String(person.id),
+    )
+      ? person.teaches.length
+        ? person.teaches[0]
+        : null
+      : null;
 
-    const savedNotifications = readStorage(NOTIFICATIONS_KEY, []);
-    const notifications = Array.isArray(savedNotifications)
-      ? savedNotifications
+    // Find the actual database skill ID, not just its displayed name.
+    const partnerSkill = wantedSkill
+      ? partners
+          .filter((partner) => String(partner.id) === String(person.id))
+          .flatMap(() => [])
       : [];
 
-    writeStorage(NOTIFICATIONS_KEY, [
-      {
-        id: createId(),
-        title: 'Skill-swap request sent',
-        message: `Your request to ${person.name} has been saved.`,
-        type: 'request',
-        read: false,
-        createdAt: new Date().toISOString(),
-      },
-      ...notifications,
-    ]);
+    // Discover records contain the partner's skill IDs; use a skill ID
+    // retained on the partner card when selecting the requested skill.
+    const wantedSkillId = person.teachSkillIds?.[0];
 
-    window.dispatchEvent(new Event('swapSkillRequestsUpdated'));
-    window.dispatchEvent(new Event('swapSkillNotificationsUpdated'));
+    if (!offeredSkill?.id || !wantedSkillId) {
+      setFeedback(
+        'Could not identify the skill IDs for this request. Refresh Discover and try again.',
+      );
+      return;
+    }
 
-    setFeedback(`Your request to ${person.name} was sent successfully.`);
+    setSendingTo(String(person.id));
+
+    try {
+      await apiRequest('/requests', {
+        method: 'POST',
+        body: JSON.stringify({
+          offered_skill_id: offeredSkill.id,
+          wanted_skill_id: wantedSkillId,
+          note: `Hello ${person.name}, I would like to exchange skills with you.`,
+        }),
+      });
+
+      setFeedback(`Your request to ${person.name} was sent successfully.`);
+
+      // Reload backend data so the request status reflects the database.
+      const result = await apiRequest('/requests?direction=sent');
+      setRequests(getRequestsFromResponse(result));
+    } catch (requestError) {
+      setError(requestError.message || 'Could not send the request.');
+    } finally {
+      setSendingTo('');
+    }
   }
 
   return (
@@ -379,7 +401,7 @@ function Discover() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <button type="button" onClick={() => {}}>
+            <button type="button" onClick={() => setSearch(search.trim())}>
               Search
             </button>
           </div>
@@ -389,7 +411,7 @@ function Discover() {
           <div className="popular-skills">
             <h2>Popular skills</h2>
             <div className="skill-chips">
-              {popularSkills.map((skill) => (
+              {POPULAR_SKILLS.map((skill) => (
                 <button
                   key={skill}
                   type="button"
@@ -417,7 +439,7 @@ function Discover() {
               <select
                 id="filter-level"
                 value={level}
-                onChange={(e) => setLevel(e.target.value)}
+                onChange={(event) => setLevel(event.target.value)}
               >
                 <option>All levels</option>
                 <option>Beginner</option>
@@ -431,13 +453,14 @@ function Discover() {
               <select
                 id="filter-availability"
                 value={availability}
-                onChange={(e) => setAvailability(e.target.value)}
+                onChange={(event) => setAvailability(event.target.value)}
               >
                 <option>Any time</option>
                 <option>Weekdays</option>
                 <option>Weekends</option>
                 <option>Evenings</option>
                 <option>Flexible</option>
+                <option>Not specified</option>
               </select>
 
               <label htmlFor="filter-location">Location</label>
@@ -446,7 +469,7 @@ function Discover() {
                 type="text"
                 placeholder="Enter a city"
                 value={location}
-                onChange={(e) => setLocation(e.target.value)}
+                onChange={(event) => setLocation(event.target.value)}
               />
 
               <div className="filter-note">
@@ -463,9 +486,11 @@ function Discover() {
                 <div>
                   <h2>Skill partners</h2>
                   <p>
-                    {filteredPartners.length}{' '}
-                    {filteredPartners.length === 1 ? 'partner' : 'partners'}{' '}
-                    found
+                    {loading
+                      ? 'Loading partners...'
+                      : `${filteredPartners.length} ${
+                          filteredPartners.length === 1 ? 'partner' : 'partners'
+                        } found`}
                   </p>
                 </div>
 
@@ -473,7 +498,7 @@ function Discover() {
                   <span>Sort by</span>
                   <select
                     value={sort}
-                    onChange={(e) => setSort(e.target.value)}
+                    onChange={(event) => setSort(event.target.value)}
                     aria-label="Sort partners"
                   >
                     <option>Best match</option>
@@ -483,16 +508,30 @@ function Discover() {
                 </label>
               </div>
 
+              {error && (
+                <div className="discover-feedback" role="alert">
+                  {error}
+                  <button type="button" onClick={loadDiscoverData}>
+                    Try again
+                  </button>
+                </div>
+              )}
+
               {feedback && (
                 <p className="discover-feedback" role="status">
                   {feedback}
                 </p>
               )}
 
-              {filteredPartners.length ? (
+              {loading ? (
+                <div className="discover-empty">
+                  <h3>Loading skill partners...</h3>
+                  <p>Please wait while we load the latest skills.</p>
+                </div>
+              ) : filteredPartners.length ? (
                 <div className="partner-grid">
                   {filteredPartners.map((person) => {
-                    const status = getRequestStatus(requests, person);
+                    const status = getRequestStatus(requests, person.id);
 
                     return (
                       <article className="partner-card" key={person.id}>
@@ -500,18 +539,10 @@ function Discover() {
                           <div className={`partner-avatar ${person.color}`}>
                             {person.initials}
                           </div>
+
                           <div className="partner-match">
-                            {person.isOwnProfile ? (
-                              <>
-                                <strong>You</strong>
-                                <span>Your listing</span>
-                              </>
-                            ) : (
-                              <>
-                                <strong>{person.match}%</strong>
-                                <span>match</span>
-                              </>
-                            )}
+                            <strong>{person.match}%</strong>
+                            <span>skill match</span>
                           </div>
                         </div>
 
@@ -521,14 +552,8 @@ function Discover() {
                         </p>
 
                         <div className="partner-stats">
-                          {person.isOwnProfile ? (
-                            <span>Your profile</span>
-                          ) : (
-                            <>
-                              <span>★ {person.rating}</span>
-                              <span>{person.swaps} successful swaps</span>
-                            </>
-                          )}
+                          <span>Rating not available</span>
+                          <span>Swap history not available</span>
                         </div>
 
                         <div className="partner-skills">
@@ -572,31 +597,29 @@ function Discover() {
 
                         <Link
                           className="partner-profile-link"
-                          to={
-                            person.isOwnProfile
-                              ? '/profile/me'
-                              : `/profile/${person.id}`
-                          }
+                          to={`/profile/${person.id}`}
                         >
-                          {person.isOwnProfile
-                            ? 'View your profile'
-                            : 'View profile'}
-                          <span aria-hidden="true"> →</span>
+                          View profile <span aria-hidden="true">→</span>
                         </Link>
 
-                        {!person.isOwnProfile && (
-                          <button
-                            type="button"
-                            className="partner-request-button"
-                            onClick={() => sendRequest(person)}
-                          >
-                            {status === 'accepted'
+                        <button
+                          type="button"
+                          className="partner-request-button"
+                          disabled={
+                            sendingTo === String(person.id) ||
+                            status === 'pending' ||
+                            status === 'accepted'
+                          }
+                          onClick={() => sendRequest(person)}
+                        >
+                          {sendingTo === String(person.id)
+                            ? 'Sending request...'
+                            : status === 'accepted'
                               ? 'Request accepted'
                               : status === 'pending'
-                                ? 'Request pending — click to check'
+                                ? 'Request pending'
                                 : 'Send skill-swap request'}
-                          </button>
-                        )}
+                        </button>
                       </article>
                     );
                   })}
@@ -605,7 +628,11 @@ function Discover() {
                 <div className="discover-empty">
                   <span aria-hidden="true">⌕</span>
                   <h3>No skill partners found</h3>
-                  <p>Try another search or clear some filters.</p>
+                  <p>
+                    {partners.length === 0
+                      ? 'No other members have added discoverable skills yet.'
+                      : 'Try another search or clear some filters.'}
+                  </p>
                   <button type="button" onClick={clearFilters}>
                     Clear filters
                   </button>
