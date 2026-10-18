@@ -77,6 +77,28 @@ function getPartnerName(item) {
   );
 }
 
+function getSessionPartnerName(session, currentUserId) {
+  if (Number(session.requester_id) === currentUserId) {
+    return (
+      session.recipient_name ||
+      session.partner_name ||
+      session.other_user_name ||
+      'Skill-swap partner'
+    );
+  }
+
+  if (Number(session.recipient_id) === currentUserId) {
+    return (
+      session.requester_name ||
+      session.partner_name ||
+      session.other_user_name ||
+      'Skill-swap partner'
+    );
+  }
+
+  return getPartnerName(session);
+}
+
 function getSessionStatus(session) {
   return (session.status || 'scheduled').toLowerCase();
 }
@@ -86,11 +108,18 @@ function getRequestId(request) {
 }
 
 function Sessions() {
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  let currentUser = {};
+
+  try {
+    currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  } catch {
+    currentUser = {};
+  }
 
   const currentUserId = Number(
     currentUser.id ?? currentUser.userId ?? currentUser.user_id,
   );
+
   const [sessions, setSessions] = useState([]);
   const [acceptedRequests, setAcceptedRequests] = useState([]);
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -586,10 +615,25 @@ function Sessions() {
               {visibleSessions.map((session) => {
                 const status = getSessionStatus(session);
                 const isUpdating = updatingId === session.id;
+
                 const partnerId =
                   Number(session.requester_id) === currentUserId
                     ? session.recipient_id
                     : session.requester_id;
+
+                const partnerName = getSessionPartnerName(
+                  session,
+                  currentUserId,
+                );
+
+                const reviewState = {
+                  partnerId,
+                  partnerName,
+                  offeredSkillName: session.offered_skill_name,
+                  wantedSkillName: session.wanted_skill_name,
+                  scheduledAt: session.scheduled_at,
+                  durationMinutes: session.duration_minutes,
+                };
 
                 return (
                   <article className="session-card" key={session.id}>
@@ -600,7 +644,7 @@ function Sessions() {
 
                     <div className="session-card-content">
                       <div className="session-card-title">
-                        <h3>{getPartnerName(session)}</h3>
+                        <h3>{partnerName}</h3>
                         <span className={`session-status ${status}`}>
                           {status}
                         </span>
@@ -631,19 +675,46 @@ function Sessions() {
                         <p className="session-notes">{session.notes}</p>
                       )}
 
+                      {status === 'scheduled' && (
+                        <div className="session-card-actions">
+                          <Link
+                            to={`/pre-join-session/${session.id}`}
+                            className="session-video-button"
+                            state={reviewState}
+                          >
+                            Prepare to Join
+                          </Link>
+
+                          <button
+                            type="button"
+                            className="session-secondary-button"
+                            onClick={() =>
+                              updateSessionStatus(session, 'completed')
+                            }
+                            disabled={isUpdating}
+                          >
+                            {isUpdating ? 'Updating...' : 'Mark Completed'}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="session-cancel-button"
+                            onClick={() =>
+                              updateSessionStatus(session, 'cancelled')
+                            }
+                            disabled={isUpdating}
+                          >
+                            {isUpdating ? 'Updating...' : 'Cancel Session'}
+                          </button>
+                        </div>
+                      )}
+
                       {status === 'completed' && (
                         <div className="session-card-actions">
                           <Link
                             to={`/session-review/${session.id}`}
                             className="session-video-button"
-                            state={{
-                              partnerId,
-                              partnerName: getPartnerName(session),
-                              offeredSkillName: session.offered_skill_name,
-                              wantedSkillName: session.wanted_skill_name,
-                              scheduledAt: session.scheduled_at,
-                              durationMinutes: session.duration_minutes,
-                            }}
+                            state={reviewState}
                           >
                             Write Review
                           </Link>

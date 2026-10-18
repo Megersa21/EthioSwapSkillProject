@@ -13,6 +13,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const registerSessionSocket = require('./socket/sessionSocket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -71,6 +72,7 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Video calling will be registered here in the next step.
+registerSessionSocket(io);
 
 server.listen(PORT, () => {
   console.log(`EthioSwapSkill server running on port ${PORT}`);
