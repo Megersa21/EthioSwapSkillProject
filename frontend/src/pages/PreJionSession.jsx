@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import '../styles/PreJionSession.css';
 
 function PreJoinSession() {
   const navigate = useNavigate();
+  const { sessionId } = useParams();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -135,19 +136,17 @@ function PreJoinSession() {
     await startMedia(cameraId, id);
   }
 
-  async function joinSession() {
-    navigate('/session-room');
+  function joinSession() {
+    if (!sessionId) {
+      setError('Session ID is missing. Please return to your sessions.');
+      return;
+    }
 
-    // The real multi-user video room will be connected later.
-    // This demo confirms the selected devices and permissions.
-    setTimeout(() => {
-      setJoining(false);
-      setError(
-        'Your devices are ready. The live video room will be connected in the next development step.',
-      );
-    }, 300);
+    setJoining(true);
+    setError('');
+
+    navigate(`/video-call/${sessionId}`);
   }
-
   return (
     <main className="prejoin-page">
       <button

@@ -86,6 +86,11 @@ function getRequestId(request) {
 }
 
 function Sessions() {
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+  const currentUserId = Number(
+    currentUser.id ?? currentUser.userId ?? currentUser.user_id,
+  );
   const [sessions, setSessions] = useState([]);
   const [acceptedRequests, setAcceptedRequests] = useState([]);
   const [activeTab, setActiveTab] = useState('upcoming');
@@ -581,6 +586,10 @@ function Sessions() {
               {visibleSessions.map((session) => {
                 const status = getSessionStatus(session);
                 const isUpdating = updatingId === session.id;
+                const partnerId =
+                  Number(session.requester_id) === currentUserId
+                    ? session.recipient_id
+                    : session.requester_id;
 
                 return (
                   <article className="session-card" key={session.id}>
@@ -622,36 +631,22 @@ function Sessions() {
                         <p className="session-notes">{session.notes}</p>
                       )}
 
-                      {status === 'scheduled' && (
+                      {status === 'completed' && (
                         <div className="session-card-actions">
                           <Link
-                            to={`/video-call/${session.id}`}
+                            to={`/session-review/${session.id}`}
                             className="session-video-button"
+                            state={{
+                              partnerId,
+                              partnerName: getPartnerName(session),
+                              offeredSkillName: session.offered_skill_name,
+                              wantedSkillName: session.wanted_skill_name,
+                              scheduledAt: session.scheduled_at,
+                              durationMinutes: session.duration_minutes,
+                            }}
                           >
-                            Join Video Call
+                            Write Review
                           </Link>
-
-                          <button
-                            type="button"
-                            className="session-complete-button"
-                            disabled={isUpdating}
-                            onClick={() =>
-                              updateSessionStatus(session, 'completed')
-                            }
-                          >
-                            {isUpdating ? 'Updating...' : 'Mark completed'}
-                          </button>
-
-                          <button
-                            type="button"
-                            className="session-cancel-button"
-                            disabled={isUpdating}
-                            onClick={() =>
-                              updateSessionStatus(session, 'cancelled')
-                            }
-                          >
-                            Cancel session
-                          </button>
                         </div>
                       )}
                     </div>

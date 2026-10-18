@@ -44,9 +44,12 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/schedule-session" element={<ScheduleSession />} />
         <Route path="/notifications" element={<Notifications />} />
-        <Route path="/pre-join-session" element={<PreJoinSession />} />
+        <Route
+          path="/pre-join-session/:sessionId"
+          element={<PreJoinSession />}
+        />
         <Route path="/session-room" element={<LiveSessionRoom />} />
-        <Route path="/session-review" element={<SessionReview />} />
+        <Route path="/session-review/:sessionId" element={<SessionReview />} />
         <Route path="/my-skills" element={<MySkills />} />
         <Route path="/video-call/:sessionId" element={<VideoCall />} />
       </Routes>
