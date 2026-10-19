@@ -16,21 +16,31 @@ function LiveSessionRoom() {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const screenShareVideoRef = useRef(null);
+
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
+  const remoteScreenStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const screenSenderRef = useRef(null);
   const peerConnectionRef = useRef(null);
-  const roomJoinedRef = useRef(false);
+
   const pendingCandidatesRef = useRef([]);
-  const chatEndRef = useRef(null);
+  const roomJoinedRef = useRef(false);
+  const offerInProgressRef = useRef(false);
+  const offerPendingRef = useRef(false);
+  const mountedRef = useRef(false);
 
   const [micOn, setMicOn] = useState(true);
   const [videoOn, setVideoOn] = useState(true);
   const [sharing, setSharing] = useState(false);
+  const [partnerSharing, setPartnerSharing] = useState(false);
   const [chatVisible, setChatVisible] = useState(true);
+
   const [turn, setTurn] = useState(1);
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [elapsed, setElapsed] = useState(0);
+
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [roomNotice, setRoomNotice] = useState('');
@@ -49,7 +59,6 @@ function LiveSessionRoom() {
     }
   });
 
-  // Obtain camera and microphone access.
   const ensureLocalStream = useCallback(async () => {
     if (localStreamRef.current) {
       return localStreamRef.current;
@@ -66,6 +75,14 @@ function LiveSessionRoom() {
       audio: true,
     });
 
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = micOn;
+    });
+
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = videoOn;
+    });
+
     localStreamRef.current = stream;
 
     if (localVideoRef.current) {
@@ -73,20 +90,8 @@ function LiveSessionRoom() {
     }
 
     return stream;
-  }, []);
+  }, [micOn, videoOn]);
 
-  // Restore the local camera preview whenever the video element becomes available.
-  useEffect(() => {
-    if (localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
-    }
-
-    if (remoteVideoRef.current && remoteStreamRef.current) {
-      remoteVideoRef.current.srcObject = remoteStreamRef.current;
-    }
-  }, [roomJoined, remoteConnected, videoOn]);
-
-  // Create a WebRTC peer connection and exchange network candidates.
   const createPeerConnection = useCallback(async () => {
     if (peerConnectionRef.current) {
       return peerConnectionRef.current;
@@ -96,30 +101,84 @@ function LiveSessionRoom() {
     peerConnectionRef.current = pc;
 
     try {
-      const localStream = await ensureLocalStream();
+      const stream = await ensureLocalStream();
 
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
       });
     } catch (error) {
-      console.error('Could not obtain local media:', error);
+      console.error('Could not access camera or microphone:', error);
       setRoomNotice(
-        'Allow camera and microphone access, then reload the session to enable calling.',
+        'Allow camera and microphone access to enable video calling.',
       );
     }
 
     pc.ontrack = (event) => {
-      let remoteStream = event.streams?.[0];
+      const track = event.track;
 
-      if (!remoteStream) {
+      if (track.kind === 'video') {
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
 
-        remoteStreamRef.current.addTrack(event.track);
-        remoteStream = remoteStreamRef.current;
-      } else {
-        remoteStreamRef.current = remoteStream;
+        const cameraAlreadyReceived =
+          remoteStreamRef.current.getVideoTracks().length > 0;
+
+        // The initial video track is the partner's camera.
+        // A second video track is the separately added screen.
+        if (cameraAlreadyReceived) {
+          if (!remoteScreenStreamRef.current) {
+            remoteScreenStreamRef.current = new MediaStream();
+          }
+
+          const screenStream = remoteScreenStreamRef.current;
+
+          if (!screenStream.getTracks().some((t) => t.id === track.id)) {
+            screenStream.addTrack(track);
+          }
+
+          setPartnerSharing(true);
+
+          if (screenShareVideoRef.current) {
+            screenShareVideoRef.current.srcObject = screenStream;
+            screenShareVideoRef.current.play().catch(() => {});
+          }
+
+          track.addEventListener(
+            'ended',
+            () => {
+              if (remoteScreenStreamRef.current) {
+                remoteScreenStreamRef.current
+                  .getTracks()
+                  .filter((t) => t.id === track.id)
+                  .forEach((t) => {
+                    remoteScreenStreamRef.current.removeTrack(t);
+                  });
+
+                if (
+                  remoteScreenStreamRef.current.getVideoTracks().length === 0
+                ) {
+                  remoteScreenStreamRef.current = null;
+                  setPartnerSharing(false);
+
+                  if (screenShareVideoRef.current) {
+                    screenShareVideoRef.current.srcObject = null;
+                  }
+                }
+              }
+            },
+            { once: true },
+          );
+
+          return;
+        }
+      }
+
+      const remoteStream = remoteStreamRef.current || new MediaStream();
+      remoteStreamRef.current = remoteStream;
+
+      if (!remoteStream.getTracks().some((t) => t.id === track.id)) {
+        remoteStream.addTrack(track);
       }
 
       if (remoteVideoRef.current) {
@@ -128,7 +187,7 @@ function LiveSessionRoom() {
       }
 
       setRemoteConnected(true);
-      setRoomNotice('Your partner’s audio/video stream is connected.');
+      setConnectionStatus('Video connected');
     };
 
     pc.onicecandidate = (event) => {
@@ -142,19 +201,33 @@ function LiveSessionRoom() {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
         setRemoteConnected(true);
-        setRoomNotice('Audio/video connection established.');
+        setConnectionStatus('Video connected');
+        setRoomNotice('');
       } else if (pc.connectionState === 'connecting') {
-        setRoomNotice('Connecting your audio and video...');
+        setConnectionStatus('Connecting video...');
       } else if (
         pc.connectionState === 'failed' ||
         pc.connectionState === 'disconnected'
       ) {
         setRemoteConnected(false);
+        setConnectionStatus('Connection interrupted');
         setRoomNotice(
-          'The media connection was interrupted. Check your network and try rejoining.',
+          'The video connection was interrupted. Check your network.',
         );
       } else if (pc.connectionState === 'closed') {
         setRemoteConnected(false);
+      }
+    };
+
+    // Retry a pending offer after the current negotiation finishes.
+    pc.onsignalingstatechange = () => {
+      if (
+        pc.signalingState === 'stable' &&
+        offerPendingRef.current &&
+        !offerInProgressRef.current
+      ) {
+        offerPendingRef.current = false;
+        createOffer();
       }
     };
 
@@ -170,41 +243,57 @@ function LiveSessionRoom() {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (error) {
-        console.error('Could not add queued ICE candidate:', error);
+        console.error('Could not apply ICE candidate:', error);
       }
     }
   }, []);
 
-  // The participant who was already in the room starts the call.
   const createOffer = useCallback(async () => {
-    try {
-      if (!roomJoinedRef.current) return;
+    if (!roomJoinedRef.current) return;
 
+    if (offerInProgressRef.current) {
+      offerPendingRef.current = true;
+      return;
+    }
+
+    try {
       const pc = await createPeerConnection();
 
-      if (pc.signalingState !== 'stable') return;
+      if (pc.signalingState !== 'stable') {
+        offerPendingRef.current = true;
+        return;
+      }
+
+      offerInProgressRef.current = true;
+      offerPendingRef.current = false;
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
       socket.emit('webrtc:offer', { offer: pc.localDescription }, (result) => {
-        if (result?.status !== 'success') {
-          setRoomNotice(result?.message || 'Could not start the video call.');
+        if (result?.status && result.status !== 'success') {
+          setRoomNotice(result.message || 'Could not establish the call.');
         }
       });
     } catch (error) {
-      console.error('Could not create WebRTC offer:', error);
-      setRoomNotice('Could not start the call. Check camera permissions.');
+      console.error('Could not create offer:', error);
+      setRoomNotice('Could not establish the video connection.');
+    } finally {
+      offerInProgressRef.current = false;
     }
   }, [createPeerConnection]);
 
-  // Answer the other participant's call offer.
   const handleOffer = useCallback(
     async (payload) => {
       if (!payload?.offer || !roomJoinedRef.current) return;
 
       try {
         const pc = await createPeerConnection();
+
+        if (pc.signalingState !== 'stable') {
+          console.warn('Offer received while connection is negotiating.');
+          return;
+        }
 
         await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
 
@@ -217,10 +306,8 @@ function LiveSessionRoom() {
           'webrtc:answer',
           { answer: pc.localDescription },
           (result) => {
-            if (result?.status !== 'success') {
-              setRoomNotice(
-                result?.message || 'Could not answer the video call.',
-              );
+            if (result?.status && result.status !== 'success') {
+              setRoomNotice(result.message || 'Could not answer the call.');
             }
           },
         );
@@ -229,14 +316,13 @@ function LiveSessionRoom() {
           setPartnerName(payload.fromUserName);
         }
       } catch (error) {
-        console.error('Could not answer WebRTC offer:', error);
-        setRoomNotice('Could not answer the call. Please try rejoining.');
+        console.error('Could not answer offer:', error);
+        setRoomNotice('Could not answer the call. Please rejoin the session.');
       }
     },
     [addPendingCandidates, createPeerConnection],
   );
 
-  // Apply the answer received by the caller.
   const handleAnswer = useCallback(
     async (payload) => {
       const pc = peerConnectionRef.current;
@@ -251,15 +337,19 @@ function LiveSessionRoom() {
         );
 
         await addPendingCandidates(pc);
+
+        if (offerPendingRef.current) {
+          offerPendingRef.current = false;
+          await createOffer();
+        }
       } catch (error) {
-        console.error('Could not apply WebRTC answer:', error);
-        setRoomNotice('Could not complete the call connection.');
+        console.error('Could not apply answer:', error);
+        setRoomNotice('Could not complete the video connection.');
       }
     },
-    [addPendingCandidates],
+    [addPendingCandidates, createOffer],
   );
 
-  // ICE candidates can arrive before the remote description is ready.
   const handleIceCandidate = useCallback(async (payload) => {
     if (!payload?.candidate) return;
 
@@ -277,7 +367,6 @@ function LiveSessionRoom() {
     }
   }, []);
 
-  // Join the authorized Socket.IO session room and register call events.
   useEffect(() => {
     if (!sessionId) {
       setConnectionStatus('Missing session ID');
@@ -287,11 +376,12 @@ function LiveSessionRoom() {
 
     if (!localStorage.getItem('token')) {
       setConnectionStatus('Not authenticated');
-      setRoomNotice('Please log in again before joining this session.');
+      setRoomNotice('Please log in before joining this session.');
       return undefined;
     }
 
     let active = true;
+    mountedRef.current = true;
 
     function joinRoom() {
       socket.emit('session:join', { sessionId }, (result) => {
@@ -308,19 +398,19 @@ function LiveSessionRoom() {
         roomJoinedRef.current = true;
         setRoomJoined(true);
         setConnectionStatus('Waiting for partner...');
-        setPartnerName(result.userName || 'Skill-swap partner');
+        setPartnerName(
+          result.partnerName || result.userName || 'Skill-swap partner',
+        );
         setRoomNotice('You joined the session. Waiting for your partner...');
       });
     }
 
     function handleConnect() {
-      if (!active) return;
-      joinRoom();
+      if (active) joinRoom();
     }
 
     function handleConnectError(error) {
       if (!active) return;
-
       setConnectionStatus('Connection failed');
       setRoomNotice(error.message || 'Could not connect to the server.');
     }
@@ -333,7 +423,7 @@ function LiveSessionRoom() {
       }
 
       setRoomNotice(
-        `${participant.userName || 'Your partner'} joined. Starting the call...`,
+        `${participant.userName || 'Your partner'} joined the session.`,
       );
 
       createOffer();
@@ -343,6 +433,8 @@ function LiveSessionRoom() {
       if (!active) return;
 
       setRemoteConnected(false);
+      setPartnerSharing(false);
+
       setRoomNotice(
         `${participant.userName || 'Your partner'} left the session.`,
       );
@@ -350,30 +442,36 @@ function LiveSessionRoom() {
       peerConnectionRef.current?.close();
       peerConnectionRef.current = null;
       remoteStreamRef.current = null;
+      remoteScreenStreamRef.current = null;
       pendingCandidatesRef.current = [];
+      offerPendingRef.current = false;
 
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
       }
+
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = null;
+      }
     }
 
     function handleChatMessage(incoming) {
-      if (!active) return;
+      if (!active || !incoming) return;
 
       setMessages((current) => {
-        if (current.some((item) => item.id === incoming.id)) {
+        if (incoming.id && current.some((item) => item.id === incoming.id)) {
           return current;
         }
 
         return [
           ...current,
           {
-            id: incoming.id,
+            id: incoming.id || `${Date.now()}-${Math.random()}`,
             sender:
               String(incoming.senderId) === currentUserId ? 'you' : 'partner',
             senderName: incoming.senderName || 'Skill-swap partner',
-            text: incoming.text,
-            createdAt: incoming.createdAt,
+            text: incoming.text || '',
+            createdAt: incoming.createdAt || new Date().toISOString(),
           },
         ];
       });
@@ -396,6 +494,7 @@ function LiveSessionRoom() {
 
     return () => {
       active = false;
+      mountedRef.current = false;
       roomJoinedRef.current = false;
 
       socket.off('connect', handleConnect);
@@ -425,15 +524,24 @@ function LiveSessionRoom() {
     handleIceCandidate,
   ]);
 
-  // Release camera, microphone, and screen-sharing tracks on unmount.
   useEffect(() => {
-    return () => {
-      localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
+    if (localVideoRef.current && localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
 
-  // Local session timer.
+    if (remoteVideoRef.current && remoteStreamRef.current) {
+      remoteVideoRef.current.srcObject = remoteStreamRef.current;
+    }
+
+    if (screenShareVideoRef.current) {
+      if (sharing && screenStreamRef.current) {
+        screenShareVideoRef.current.srcObject = screenStreamRef.current;
+      } else if (partnerSharing && remoteScreenStreamRef.current) {
+        screenShareVideoRef.current.srcObject = remoteScreenStreamRef.current;
+      }
+    }
+  }, [sharing, partnerSharing, remoteConnected, videoOn]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       setElapsed((value) => value + 1);
@@ -444,8 +552,12 @@ function LiveSessionRoom() {
   }, []);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    return () => {
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      peerConnectionRef.current?.close();
+    };
+  }, []);
 
   function formatTime(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
@@ -474,79 +586,119 @@ function LiveSessionRoom() {
 
   async function toggleScreenShare() {
     if (sharing) {
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      await stopScreenShare();
       return;
     }
 
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      setRoomNotice('Screen sharing is not supported by this browser.');
+      setRoomNotice(
+        'Screen sharing is not supported here. Open the site in a supported browser using HTTPS or localhost.',
+      );
+      return;
+    }
+
+    if (!roomJoinedRef.current) {
+      setRoomNotice('Join the session before sharing your screen.');
       return;
     }
 
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+      const pc = await createPeerConnection();
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          frameRate: { ideal: 15, max: 30 },
+        },
         audio: false,
       });
 
-      screenStreamRef.current = screenStream;
-      setSharing(true);
+      const track = stream.getVideoTracks()[0];
 
-      const screenTrack = screenStream.getVideoTracks()[0];
-      const pc = peerConnectionRef.current;
-
-      if (pc && screenTrack) {
-        const videoSender = pc
-          .getSenders()
-          .find((sender) => sender.track?.kind === 'video');
-
-        if (videoSender) {
-          await videoSender.replaceTrack(screenTrack);
-        } else {
-          pc.addTrack(screenTrack, screenStream);
-        }
+      if (!track) {
+        stream.getTracks().forEach((item) => item.stop());
+        setRoomNotice('No screen video track was selected.');
+        return;
       }
 
-      setRoomNotice(
-        'Screen sharing started. Your partner should receive it when the WebRTC connection is active.',
-      );
+      screenStreamRef.current = stream;
 
-      screenTrack?.addEventListener(
+      // Add a separate video track. The camera track remains active.
+      screenSenderRef.current = pc.addTrack(track, stream);
+
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = stream;
+        screenShareVideoRef.current.play().catch(() => {});
+      }
+
+      setSharing(true);
+      setRoomNotice('Screen selected. Connecting the shared screen...');
+
+      track.addEventListener(
         'ended',
         () => {
-          restoreCameraTrack();
+          if (screenStreamRef.current) {
+            stopScreenShare();
+          }
         },
         { once: true },
       );
+
+      // Renegotiate the peer connection to send the new screen track.
+      await createOffer();
+
+      setRoomNotice('Screen sharing started.');
     } catch (error) {
-      if (error.name !== 'NotAllowedError') {
-        setRoomNotice('Unable to start screen sharing.');
+      console.error('Screen sharing failed:', error);
+
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = null;
+      screenSenderRef.current = null;
+      setSharing(false);
+
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = null;
+      }
+
+      if (error.name === 'NotAllowedError') {
+        setRoomNotice('Screen sharing was cancelled or permission was denied.');
+      } else {
+        setRoomNotice(
+          `Unable to share your screen: ${error.message || 'Unknown error'}`,
+        );
       }
     }
   }
 
-  async function restoreCameraTrack() {
-    const screenStream = screenStreamRef.current;
+  async function stopScreenShare() {
+    const pc = peerConnectionRef.current;
+    const sender = screenSenderRef.current;
+
+    if (sender && pc) {
+      try {
+        pc.removeTrack(sender);
+      } catch (error) {
+        console.error('Could not remove screen sender:', error);
+      }
+    }
+
+    screenSenderRef.current = null;
+
+    const stream = screenStreamRef.current;
     screenStreamRef.current = null;
 
-    screenStream?.getTracks().forEach((track) => track.stop());
+    stream?.getTracks().forEach((track) => {
+      track.stop();
+    });
+
     setSharing(false);
 
-    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-    const pc = peerConnectionRef.current;
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.srcObject = null;
+    }
 
-    if (pc && cameraTrack) {
-      const videoSender = pc
-        .getSenders()
-        .find((sender) => sender.track?.kind === 'video');
-
-      if (videoSender) {
-        try {
-          await videoSender.replaceTrack(cameraTrack);
-        } catch (error) {
-          console.error('Could not restore camera track:', error);
-        }
-      }
+    if (pc && roomJoinedRef.current) {
+      offerPendingRef.current = true;
+      await createOffer();
     }
 
     setRoomNotice('Screen sharing stopped.');
@@ -556,7 +708,6 @@ function LiveSessionRoom() {
     event.preventDefault();
 
     const text = message.trim();
-
     if (!text) return;
 
     if (!socket.connected || !roomJoinedRef.current) {
@@ -573,18 +724,21 @@ function LiveSessionRoom() {
       const sentMessage = result.message;
 
       setMessages((current) => {
-        if (current.some((item) => item.id === sentMessage.id)) {
+        if (
+          sentMessage?.id &&
+          current.some((item) => item.id === sentMessage.id)
+        ) {
           return current;
         }
 
         return [
           ...current,
           {
-            id: sentMessage.id,
+            id: sentMessage?.id || `${Date.now()}-${Math.random()}`,
             sender: 'you',
-            senderName: sentMessage.senderName || 'You',
-            text: sentMessage.text,
-            createdAt: sentMessage.createdAt,
+            senderName: sentMessage?.senderName || 'You',
+            text: sentMessage?.text || text,
+            createdAt: sentMessage?.createdAt || new Date().toISOString(),
           },
         ];
       });
@@ -595,9 +749,9 @@ function LiveSessionRoom() {
 
   function swapRoles() {
     const nextTurn = turn === 1 ? 2 : 1;
-
     setTurn(nextTurn);
     setSecondsLeft(25 * 60);
+
     setRoomNotice(
       nextTurn === 2
         ? 'Roles swapped. Your partner teaches Web development now.'
@@ -611,6 +765,7 @@ function LiveSessionRoom() {
     }
 
     setIsLeaving(true);
+    roomJoinedRef.current = false;
 
     if (socket.connected) {
       socket.emit('session:leave');
@@ -625,9 +780,17 @@ function LiveSessionRoom() {
 
     localStreamRef.current = null;
     screenStreamRef.current = null;
+    screenSenderRef.current = null;
 
-    navigate('/session-review');
+    navigate(`/session-review/${sessionId}`);
   }
+
+  const initials = partnerName
+    .split(' ')
+    .map((part) => part[0] || '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <main className="live-room">
@@ -644,7 +807,7 @@ function LiveSessionRoom() {
 
           <div>
             <h1>Design ⇄ Web development</h1>
-            <p>with {partnerName}</p>
+            <p>Skill swap with {partnerName}</p>
           </div>
         </div>
 
@@ -652,11 +815,9 @@ function LiveSessionRoom() {
           <span className="live-pill">
             <i /> Live · {formatTime(elapsed)}
           </span>
-
           <span className="turn-pill">
             Turn {turn} of 2 · {formatTime(secondsLeft)} left
           </span>
-
           <span className="connection-pill">
             {remoteConnected ? '● Video connected' : connectionStatus}
           </span>
@@ -668,104 +829,110 @@ function LiveSessionRoom() {
           <div className="screen-share-heading">
             <p>
               <span>▣</span>
-              {sharing ? 'You are sharing your screen' : 'Shared workspace'}
+              {sharing
+                ? 'You are sharing your screen'
+                : partnerSharing
+                  ? `${partnerName} is sharing their screen`
+                  : 'Shared workspace'}
             </p>
 
             {sharing && (
-              <button type="button" onClick={toggleScreenShare}>
+              <button type="button" onClick={stopScreenShare}>
                 Stop sharing
               </button>
             )}
           </div>
 
           <div className="shared-screen">
-            <div className="mock-design-window">
-              <div className="mock-window-toolbar">
-                <div className="window-dots">
-                  <i />
-                  <i />
-                  <i />
-                </div>
-                <span>EthioSwapSkill · Live workspace</span>
+            {sharing || partnerSharing ? (
+              <video
+                ref={screenShareVideoRef}
+                className="shared-screen-video"
+                autoPlay
+                playsInline
+                muted={sharing}
+              />
+            ) : (
+              <div className="shared-screen-empty">
+                <div className="workspace-icon">▣</div>
+                <h2>Shared workspace</h2>
+                <p>
+                  Share your screen to demonstrate a design, write code
+                  together, or explain a skill.
+                </p>
+                <button
+                  type="button"
+                  className="workspace-share-button"
+                  onClick={toggleScreenShare}
+                  disabled={!roomJoined}
+                >
+                  Share your screen
+                </button>
               </div>
-
-              <div className="mock-window-body">
-                <aside className="mock-design-tools">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </aside>
-
-                <div className="mock-design-canvas">
-                  <div className="mock-logo-art">
-                    <div className="mock-logo-mark">
-                      <span />
-                    </div>
-                    <div className="mock-logo-line" />
-                    <div className="mock-logo-caption" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
-          <p className="participant-name">
-            Note: the workspace illustration is a placeholder. Your actual
-            shared screen is transmitted as a video track.
-          </p>
+          <div className="workspace-caption">
+            {sharing
+              ? 'Your screen is being shared with your partner.'
+              : partnerSharing
+                ? `${partnerName}'s shared screen`
+                : 'Work together and learn from each other in real time.'}
+          </div>
         </section>
 
         <aside className="live-room-sidebar">
-          <div className="live-participant-grid">
-            <article className="live-participant partner-active">
-              {remoteConnected ? (
-                <video
-                  ref={remoteVideoRef}
-                  className="remote-participant-video"
-                  autoPlay
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    minHeight: '150px',
-                    objectFit: 'cover',
-                    background: '#101827',
-                    borderRadius: '12px',
-                  }}
-                />
-              ) : (
-                <div className="participant-avatar partner-avatar">
-                  {partnerName
-                    .split(' ')
-                    .map((part) => part[0] || '')
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase()}
+          <section className="room-panel participants-panel">
+            <div className="panel-heading">
+              <h2>Participants</h2>
+              <span className="participant-count">2 people</span>
+            </div>
+
+            <div className="live-participant-grid">
+              <article className="live-participant partner-active">
+                {remoteConnected ? (
+                  <video
+                    ref={remoteVideoRef}
+                    className="remote-participant-video"
+                    autoPlay
+                    playsInline
+                  />
+                ) : (
+                  <div className="participant-avatar partner-avatar">
+                    {initials || 'SP'}
+                  </div>
+                )}
+
+                <div className="participant-caption">
+                  <span className="participant-name">{partnerName}</span>
+                  <span className="participant-state">
+                    {remoteConnected ? 'Connected' : 'Waiting for video'}
+                  </span>
                 </div>
-              )}
+              </article>
 
-              <span className="participant-name">{partnerName}</span>
-              <span className="participant-name">
-                {remoteConnected ? 'Connected' : 'Waiting for partner video'}
-              </span>
-            </article>
+              <article className="live-participant">
+                {videoOn ? (
+                  <video
+                    ref={localVideoRef}
+                    className="local-participant-video"
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                ) : (
+                  <div className="participant-avatar you-avatar">You</div>
+                )}
 
-            <article className="live-participant">
-              {videoOn ? (
-                <video
-                  ref={localVideoRef}
-                  className="local-participant-video"
-                  autoPlay
-                  playsInline
-                  muted
-                />
-              ) : (
-                <div className="participant-avatar you-avatar">You</div>
-              )}
-              <span className="participant-name">You</span>
-            </article>
-          </div>
+                <div className="participant-caption">
+                  <span className="participant-name">You</span>
+                  <span className="participant-state">
+                    {micOn ? 'Microphone on' : 'Microphone muted'}
+                  </span>
+                </div>
+              </article>
+            </div>
+          </section>
 
           <section className="room-panel session-plan">
             <h2>Session plan</h2>
@@ -783,10 +950,10 @@ function LiveSessionRoom() {
             <div className="turn-progress">
               <span
                 style={{
-                  width: `${Math.max(
-                    0,
-                    Math.min(100, (secondsLeft / (25 * 60)) * 100),
-                  )}%`,
+                  width:
+                    turn === 1
+                      ? `${Math.max(0, Math.min(100, (secondsLeft / 1500) * 100))}%`
+                      : '0%',
                 }}
               />
             </div>
@@ -812,29 +979,54 @@ function LiveSessionRoom() {
 
           {chatVisible && (
             <section className="room-panel live-chat-panel">
-              <h2>Chat</h2>
+              <div className="panel-heading">
+                <h2>Session chat</h2>
+                <span className="chat-online-indicator">
+                  {roomJoined ? 'Session joined' : 'Connecting'}
+                </span>
+              </div>
 
               <div className="live-chat-messages">
                 {messages.length === 0 && (
-                  <p className="participant-name">
-                    No messages yet. Start the conversation!
-                  </p>
+                  <div className="chat-empty">
+                    <span className="chat-empty-icon">✉</span>
+                    <strong>Start your conversation</strong>
+                    <p>
+                      Ask questions and share ideas while learning together.
+                    </p>
+                  </div>
                 )}
 
                 {messages.map((item) => (
                   <div
                     key={item.id}
-                    className={`live-chat-message ${
-                      item.sender === 'you' ? 'own-message' : ''
+                    className={`chat-message-row ${
+                      item.sender === 'you' ? 'chat-message-row-own' : ''
                     }`}
                   >
-                    {item.sender !== 'you' && (
-                      <strong>{item.senderName}: </strong>
-                    )}
-                    {item.text}
+                    <div
+                      className={`live-chat-message ${
+                        item.sender === 'you' ? 'own-message' : ''
+                      }`}
+                    >
+                      {item.sender !== 'you' && (
+                        <span className="chat-sender">
+                          {item.senderName || partnerName}
+                        </span>
+                      )}
+                      <span className="chat-message-text">{item.text}</span>
+                      <time className="chat-message-time">
+                        {item.createdAt
+                          ? new Date(item.createdAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : ''}
+                      </time>
+                    </div>
                   </div>
                 ))}
-                <div ref={chatEndRef} />
+                <div />
               </div>
 
               <form className="live-chat-form" onSubmit={sendMessage}>
@@ -843,13 +1035,19 @@ function LiveSessionRoom() {
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
                   placeholder={
-                    roomJoined ? 'Type a message...' : 'Connecting...'
+                    roomJoined
+                      ? 'Write a message...'
+                      : 'Connecting to session...'
                   }
                   aria-label="Type a chat message"
                   maxLength={2000}
                   disabled={!roomJoined}
                 />
-                <button type="submit" disabled={!roomJoined}>
+                <button
+                  type="submit"
+                  disabled={!roomJoined || !message.trim()}
+                  aria-label="Send message"
+                >
                   Send
                 </button>
               </form>
@@ -858,7 +1056,7 @@ function LiveSessionRoom() {
 
           {roomNotice && (
             <div className="room-notice" role="status">
-              {roomNotice}
+              <span>{roomNotice}</span>
               <button
                 type="button"
                 onClick={() => setRoomNotice('')}
@@ -894,8 +1092,9 @@ function LiveSessionRoom() {
           type="button"
           className={sharing ? 'room-control sharing-active' : 'room-control'}
           onClick={toggleScreenShare}
+          disabled={!roomJoined}
         >
-          <span>▣</span>
+          <span>▧</span>
           {sharing ? 'Stop sharing' : 'Share screen'}
         </button>
 
@@ -905,7 +1104,7 @@ function LiveSessionRoom() {
           onClick={() => setChatVisible((visible) => !visible)}
         >
           <span>▱</span>
-          {chatVisible ? 'Hide chat' : 'Chat'}
+          {chatVisible ? 'Hide chat' : 'Show chat'}
         </button>
 
         <button
@@ -913,7 +1112,8 @@ function LiveSessionRoom() {
           className="room-control swap-role-control"
           onClick={swapRoles}
         >
-          <span>⇄</span> Swap roles
+          <span>⇄</span>
+          Swap roles
         </button>
 
         <button
@@ -922,8 +1122,8 @@ function LiveSessionRoom() {
           onClick={leaveSession}
           disabled={isLeaving}
         >
-          <span>⌁</span>
-          {isLeaving ? 'Leaving...' : 'Leave'}
+          <span>↗</span>
+          {isLeaving ? 'Leaving...' : 'Leave session'}
         </button>
       </footer>
     </main>

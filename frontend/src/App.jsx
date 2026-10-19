@@ -28,29 +28,39 @@ function App() {
   return (
     <BrowserRouter>
       <Navbar />
+
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+
         <Route path="/discover" element={<Discover />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/add-skill" element={<AddSkill />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/messages" element={<Messages />} />
+
         <Route path="/profile/:id" element={<Profile />} />
         <Route path="/edit-profile" element={<EditProfile />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/schedule-session" element={<ScheduleSession />} />
         <Route path="/notifications" element={<Notifications />} />
+
         <Route
           path="/pre-join-session/:sessionId"
           element={<PreJoinSession />}
         />
-        <Route path="/session-room" element={<LiveSessionRoom />} />
+
+        {/* Live skill-swap session room */}
+        <Route path="/sessions/:sessionId/live" element={<LiveSessionRoom />} />
+
         <Route path="/session-review/:sessionId" element={<SessionReview />} />
+
         <Route path="/my-skills" element={<MySkills />} />
+
+        {/* Existing video-call page */}
         <Route path="/video-call/:sessionId" element={<VideoCall />} />
       </Routes>
     </BrowserRouter>

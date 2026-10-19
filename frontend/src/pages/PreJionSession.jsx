@@ -145,7 +145,7 @@ function PreJoinSession() {
     setJoining(true);
     setError('');
 
-    navigate(`/video-call/${sessionId}`);
+    navigate(`/sessions/${sessionId}/live`);
   }
   return (
     <main className="prejoin-page">

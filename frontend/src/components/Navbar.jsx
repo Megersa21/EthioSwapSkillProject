@@ -103,6 +103,7 @@ function Navbar() {
         { label: 'Discover', path: '/discover' },
         { label: 'My Skills', path: '/my-skills' },
         { label: 'Dashboard', path: '/dashboard' },
+        { label: '+Add Skill', path: '/add-skill' },
       ]
     : [
         { label: 'Home', path: '/' },

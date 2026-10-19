@@ -4,7 +4,7 @@ import Footer from '../components/Footer';
 import '../styles/Discover.css';
 
 const API_URL = 'http://localhost:5000/api';
-const PROFILE_KEY = 'swapSkillMyProfile';
+
 const AVATAR_COLORS = ['lavender', 'mint', 'peach', 'blue'];
 
 const POPULAR_SKILLS = [
@@ -17,22 +17,18 @@ const POPULAR_SKILLS = [
   'Graphic Design',
 ];
 
-function readProfile() {
-  try {
-    return JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
 async function apiRequest(path, options = {}) {
   const token = localStorage.getItem('token');
+
+  if (!token) {
+    throw new Error('Please log in to discover and exchange skills.');
+  }
 
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
@@ -41,9 +37,7 @@ async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     throw new Error(
-      result.message ||
-        result.error ||
-        `Request failed with status ${response.status}`,
+      result.message || result.error || `Request failed (${response.status}).`,
     );
   }
 
@@ -60,7 +54,6 @@ function normalizeLevel(level) {
   if (!level) return 'Not specified';
 
   const value = String(level).trim().toLowerCase();
-
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
@@ -68,6 +61,7 @@ function getInitials(name) {
   return (name || 'Member')
     .trim()
     .split(/\s+/)
+    .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0])
     .join('')
@@ -75,20 +69,23 @@ function getInitials(name) {
 }
 
 function getSkillsFromResponse(result) {
-  return Array.isArray(result.skills) ? result.skills : [];
+  return Array.isArray(result?.skills) ? result.skills : [];
 }
 
 function getRequestsFromResponse(result) {
-  return Array.isArray(result.requests) ? result.requests : [];
+  return Array.isArray(result?.requests) ? result.requests : [];
+}
+
+function getRecipientId(request) {
+  return request.recipient_id ?? request.recipientId;
 }
 
 function getRequestStatus(requests, partnerId) {
   const matching = requests.filter((request) => {
-    const recipientId = request.recipient_id ?? request.recipientId;
     const status = String(request.status || '').toLowerCase();
 
     return (
-      String(recipientId) === String(partnerId) &&
+      String(getRecipientId(request)) === String(partnerId) &&
       ['pending', 'accepted'].includes(status)
     );
   });
@@ -113,7 +110,6 @@ function getRequestStatus(requests, partnerId) {
 }
 
 function Discover() {
-  const [profile] = useState(readProfile);
   const [mySkills, setMySkills] = useState([]);
   const [partners, setPartners] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -149,7 +145,7 @@ function Discover() {
       setMySkills(ownSkills);
       setRequests(sentRequests);
 
-      // Group the partner's skill records into one card per user.
+      // Build one card per other user, keeping every skill's database ID.
       const grouped = new Map();
 
       discoveredSkills.forEach((skill) => {
@@ -158,17 +154,17 @@ function Discover() {
         if (userId == null) return;
 
         const key = String(userId);
+        const userName =
+          skill.user_name || skill.full_name || 'SkillSwap member';
 
         if (!grouped.has(key)) {
           grouped.set(key, {
             id: key,
-            name: skill.user_name || skill.full_name || 'SkillSwap member',
-            initials: getInitials(
-              skill.user_name || skill.full_name || 'Member',
-            ),
+            name: userName,
+            initials: getInitials(userName),
             location: skill.location || 'Location not provided',
             teaches: [],
-            teachSkillIds: [],
+            teachSkillIds: {},
             wants: [],
             levels: [],
             availability: skill.availability || 'Not specified',
@@ -184,14 +180,15 @@ function Discover() {
         if (!skillName) return;
 
         const type = normalizeSkillType(skill.skill_type);
+
         if (type === 'teach') {
-          if (
-            !person.teaches.some(
-              (name) => name.toLowerCase() === skillName.toLowerCase(),
-            )
-          ) {
+          const existingName = person.teaches.find(
+            (name) => name.toLowerCase() === skillName.toLowerCase(),
+          );
+
+          if (!existingName) {
             person.teaches.push(skillName);
-            person.teachSkillIds.push(skill.id);
+            person.teachSkillIds[skillName.toLowerCase()] = skill.id;
             person.levels.push(normalizeLevel(skill.proficiency_level));
           }
         } else if (type === 'learn') {
@@ -209,19 +206,24 @@ function Discover() {
         (skill) => normalizeSkillType(skill.skill_type) === 'teach',
       );
 
-      const ownLearnNames = ownSkills
-        .filter((skill) => normalizeSkillType(skill.skill_type) === 'learn')
-        .map((skill) => String(skill.skill_name || '').toLowerCase());
+      const ownLearnNames = new Set(
+        ownSkills
+          .filter((skill) => normalizeSkillType(skill.skill_type) === 'learn')
+          .map((skill) =>
+            String(skill.skill_name || '')
+              .trim()
+              .toLowerCase(),
+          ),
+      );
 
       const formattedPartners = Array.from(grouped.values()).map((person) => {
         const matchingSkills = person.teaches.filter((skill) =>
-          ownLearnNames.includes(skill.toLowerCase()),
+          ownLearnNames.has(skill.toLowerCase()),
         );
 
-        const match =
-          person.teaches.length > 0
-            ? Math.round((matchingSkills.length / person.teaches.length) * 100)
-            : 0;
+        const match = person.teaches.length
+          ? Math.round((matchingSkills.length / person.teaches.length) * 100)
+          : 0;
 
         return {
           ...person,
@@ -307,10 +309,8 @@ function Discover() {
     }
 
     const existingRequest = requests.find((request) => {
-      const recipientId = request.recipient_id ?? request.recipientId;
-
       return (
-        String(recipientId) === String(person.id) &&
+        String(getRecipientId(request)) === String(person.id) &&
         ['pending', 'accepted'].includes(
           String(request.status || '').toLowerCase(),
         )
@@ -324,35 +324,18 @@ function Discover() {
       return;
     }
 
-    // A wanted skill must be one of the partner's teaching skills.
     if (!person.teaches.length) {
       setFeedback(`${person.name} has no teaching skills available yet.`);
       return;
     }
 
     const offeredSkill = myTeachSkills[0];
-    const wantedSkill = partners.find(
-      (partner) => String(partner.id) === String(person.id),
-    )
-      ? person.teaches.length
-        ? person.teaches[0]
-        : null
-      : null;
-
-    // Find the actual database skill ID, not just its displayed name.
-    const partnerSkill = wantedSkill
-      ? partners
-          .filter((partner) => String(partner.id) === String(person.id))
-          .flatMap(() => [])
-      : [];
-
-    // Discover records contain the partner's skill IDs; use a skill ID
-    // retained on the partner card when selecting the requested skill.
-    const wantedSkillId = person.teachSkillIds?.[0];
+    const wantedSkillName = person.teaches[0];
+    const wantedSkillId = person.teachSkillIds[wantedSkillName.toLowerCase()];
 
     if (!offeredSkill?.id || !wantedSkillId) {
       setFeedback(
-        'Could not identify the skill IDs for this request. Refresh Discover and try again.',
+        'Could not identify the database skill IDs. Refresh Discover and try again.',
       );
       return;
     }
@@ -371,7 +354,6 @@ function Discover() {
 
       setFeedback(`Your request to ${person.name} was sent successfully.`);
 
-      // Reload backend data so the request status reflects the database.
       const result = await apiRequest('/requests?direction=sent');
       setRequests(getRequestsFromResponse(result));
     } catch (requestError) {
@@ -488,9 +470,7 @@ function Discover() {
                   <p>
                     {loading
                       ? 'Loading partners...'
-                      : `${filteredPartners.length} ${
-                          filteredPartners.length === 1 ? 'partner' : 'partners'
-                        } found`}
+                      : `${filteredPartners.length} ${filteredPartners.length === 1 ? 'partner' : 'partners'} found`}
                   </p>
                 </div>
 
@@ -539,7 +519,6 @@ function Discover() {
                           <div className={`partner-avatar ${person.color}`}>
                             {person.initials}
                           </div>
-
                           <div className="partner-match">
                             <strong>{person.match}%</strong>
                             <span>skill match</span>
