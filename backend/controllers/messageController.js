@@ -1,103 +1,230 @@
 const pool = require('../config/db');
+const fs = require('fs');
+const path = require('path');
 
-// Send a message
-const sendMessage = async (req, res) => {
+function deleteUploadedFile(file) {
+  if (!file) return;
+
+  fs.unlink(file.path, (error) => {
+    if (error) console.error('Could not remove unused upload:', error);
+  });
+}
+
+async function sendMessage(req, res) {
+  const senderId = Number(req.user.userId);
+  const receiverId = Number(req.body.receiver_id);
+  const messageText = String(req.body.message_text || '').trim();
+  const swapRequestId = req.body.swap_request_id || null;
+  const file = req.file;
+
+  if (!receiverId || receiverId === senderId) {
+    deleteUploadedFile(file);
+    return res.status(400).json({
+      status: 'error',
+      message: 'Choose a valid recipient other than yourself.',
+    });
+  }
+
+  if (!messageText && !file) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Write a message or attach a file.',
+    });
+  }
+
+  if (messageText.length > 10000) {
+    deleteUploadedFile(file);
+    return res.status(400).json({
+      status: 'error',
+      message: 'Messages cannot exceed 10,000 characters.',
+    });
+  }
+
   try {
-    const senderId = req.user.userId;
-    const { receiver_id, message_text, swap_request_id } = req.body;
-
-    if (!receiver_id || !message_text || !message_text.trim()) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Receiver ID and message text are required.',
-      });
-    }
-
-    if (
-      !Number.isSafeInteger(Number(receiver_id)) ||
-      Number(receiver_id) <= 0
-    ) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Receiver ID must be a valid positive integer.',
-      });
-    }
-
-    if (Number(receiver_id) === Number(senderId)) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'You cannot send a message to yourself.',
-      });
-    }
-
-    const receiver = await pool.query(
+    const recipient = await pool.query(
       'SELECT id FROM public.users WHERE id = $1',
-      [receiver_id],
+      [receiverId],
     );
 
-    if (receiver.rows.length === 0) {
+    if (!recipient.rowCount) {
+      deleteUploadedFile(file);
       return res.status(404).json({
         status: 'error',
-        message: 'Receiver not found.',
+        message: 'Recipient not found.',
       });
     }
 
-    if (swap_request_id !== undefined && swap_request_id !== null) {
+    if (swapRequestId) {
       const request = await pool.query(
         `SELECT id
          FROM public.swap_requests
          WHERE id = $1
            AND (
-             (requester_id = $2 AND recipient_id = $3)
-             OR
-             (requester_id = $3 AND recipient_id = $2)
+             (sender_id = $2 AND receiver_id = $3)
+             OR (sender_id = $3 AND receiver_id = $2)
            )`,
-        [swap_request_id, senderId, receiver_id],
+        [swapRequestId, senderId, receiverId],
       );
 
-      if (request.rows.length === 0) {
+      if (!request.rowCount) {
+        deleteUploadedFile(file);
         return res.status(400).json({
           status: 'error',
-          message: 'The swap request does not belong to these users.',
+          message: 'The swap request is not associated with these users.',
         });
       }
     }
 
+    const attachmentUrl = file
+      ? `/uploads/messages/${path.basename(file.filename)}`
+      : null;
+
+    const attachmentName = file ? file.originalname : null;
+    const attachmentType = file ? file.mimetype : null;
+
     const result = await pool.query(
       `INSERT INTO public.messages
-         (sender_id, receiver_id, swap_request_id, message_text)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [senderId, receiver_id, swap_request_id ?? null, message_text.trim()],
+       (
+         sender_id,
+         receiver_id,
+         swap_request_id,
+         message_text,
+         attachment_url,
+         attachment_name,
+         attachment_type
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING
+         id,
+         sender_id,
+         receiver_id,
+         swap_request_id,
+         message_text,
+         attachment_url,
+         attachment_name,
+         attachment_type,
+         is_read,
+         created_at`,
+      [
+        senderId,
+        receiverId,
+        swapRequestId,
+        messageText,
+        attachmentUrl,
+        attachmentName,
+        attachmentType,
+      ],
     );
+
+    const savedMessage = result.rows[0];
+
+    const names = await pool.query(
+      `SELECT id, full_name
+       FROM public.users
+       WHERE id = ANY($1::int[])`,
+      [[senderId, receiverId]],
+    );
+
+    const userNames = new Map(
+      names.rows.map((user) => [Number(user.id), user.full_name]),
+    );
+
+    const completeMessage = {
+      ...savedMessage,
+      sender_name: userNames.get(senderId) || 'User',
+      receiver_name: userNames.get(receiverId) || 'User',
+    };
+
+    const io = req.app.get('io');
+
+    if (io) {
+      io.to(`user:${senderId}`)
+        .to(`user:${receiverId}`)
+        .emit('message:new', completeMessage);
+    }
 
     return res.status(201).json({
       status: 'success',
       message: 'Message sent successfully.',
-      data: result.rows[0],
+      data: completeMessage,
     });
   } catch (error) {
-    console.error('Send message error:', error);
+    deleteUploadedFile(file);
+    console.error('sendMessage error:', error);
+
     return res.status(500).json({
       status: 'error',
-      message: 'Failed to send message.',
+      message: 'Could not send the message.',
     });
   }
-};
+}
 
-// Get messages exchanged with another user
-const getConversation = async (req, res) => {
+async function getConversations(req, res) {
+  const userId = Number(req.user.userId);
+
   try {
-    const userId = req.user.userId;
-    const otherUserId = Number(req.params.userId);
+    const result = await pool.query(
+      `WITH ranked AS (
+         SELECT
+           m.*,
+           CASE
+             WHEN m.sender_id = $1 THEN m.receiver_id
+             ELSE m.sender_id
+           END AS partner_id,
+           ROW_NUMBER() OVER (
+             PARTITION BY LEAST(m.sender_id, m.receiver_id),
+                          GREATEST(m.sender_id, m.receiver_id)
+             ORDER BY m.created_at DESC, m.id DESC
+           ) AS row_num
+         FROM public.messages m
+         WHERE m.sender_id = $1 OR m.receiver_id = $1
+       )
+       SELECT
+         r.partner_id,
+         u.full_name AS partner_name,
+         r.message_text AS last_message,
+         r.attachment_name AS last_attachment_name,
+         r.created_at AS last_message_at,
+         (
+           SELECT COUNT(*)::int
+           FROM public.messages unread
+           WHERE unread.sender_id = r.partner_id
+             AND unread.receiver_id = $1
+             AND unread.is_read = FALSE
+         ) AS unread_count
+       FROM ranked r
+       JOIN public.users u ON u.id = r.partner_id
+       WHERE r.row_num = 1
+       ORDER BY r.created_at DESC`,
+      [userId],
+    );
 
-    if (!Number.isSafeInteger(otherUserId) || otherUserId <= 0) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'A valid user ID is required.',
-      });
-    }
+    return res.json({
+      status: 'success',
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error('getConversations error:', error);
 
+    return res.status(500).json({
+      status: 'error',
+      message: 'Could not load conversations.',
+    });
+  }
+}
+
+async function getConversation(req, res) {
+  const userId = Number(req.user.userId);
+  const partnerId = Number(req.params.userId);
+
+  if (!partnerId || partnerId === userId) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid conversation partner.',
+    });
+  }
+
+  try {
     const result = await pool.query(
       `SELECT
          m.id,
@@ -105,6 +232,9 @@ const getConversation = async (req, res) => {
          m.receiver_id,
          m.swap_request_id,
          m.message_text,
+         m.attachment_url,
+         m.attachment_name,
+         m.attachment_type,
          m.is_read,
          m.created_at,
          sender.full_name AS sender_name,
@@ -117,62 +247,54 @@ const getConversation = async (req, res) => {
          OR
          (m.sender_id = $2 AND m.receiver_id = $1)
        ORDER BY m.created_at ASC, m.id ASC`,
-      [userId, otherUserId],
+      [userId, partnerId],
     );
 
     return res.json({
       status: 'success',
-      count: result.rows.length,
       data: result.rows,
     });
   } catch (error) {
-    console.error('Get conversation error:', error);
+    console.error('getConversation error:', error);
+
     return res.status(500).json({
       status: 'error',
-      message: 'Failed to retrieve conversation.',
+      message: 'Could not load conversation.',
     });
   }
-};
+}
 
-// Mark received messages as read
-const markMessagesRead = async (req, res) => {
+async function markMessagesRead(req, res) {
+  const userId = Number(req.user.userId);
+  const partnerId = Number(req.params.userId);
+
   try {
-    const userId = req.user.userId;
-    const otherUserId = Number(req.params.userId);
-
-    if (!Number.isSafeInteger(otherUserId) || otherUserId <= 0) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'A valid user ID is required.',
-      });
-    }
-
-    const result = await pool.query(
+    await pool.query(
       `UPDATE public.messages
        SET is_read = TRUE
        WHERE sender_id = $1
          AND receiver_id = $2
-         AND is_read = FALSE
-       RETURNING id`,
-      [otherUserId, userId],
+         AND is_read = FALSE`,
+      [partnerId, userId],
     );
 
     return res.json({
       status: 'success',
       message: 'Messages marked as read.',
-      updatedCount: result.rowCount,
     });
   } catch (error) {
-    console.error('Mark messages read error:', error);
+    console.error('markMessagesRead error:', error);
+
     return res.status(500).json({
       status: 'error',
-      message: 'Failed to mark messages as read.',
+      message: 'Could not mark messages as read.',
     });
   }
-};
+}
 
 module.exports = {
   sendMessage,
+  getConversations,
   getConversation,
   markMessagesRead,
 };

@@ -14,6 +14,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const registerSessionSocket = require('./socket/sessionSocket');
+const registerMessageSocket = require('./socket/messageSocket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -25,6 +26,7 @@ app.use(
   }),
 );
 app.use(express.json());
+app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/skills', skillRoutes);
@@ -73,6 +75,7 @@ app.set('io', io);
 
 // Video calling will be registered here in the next step.
 registerSessionSocket(io);
+registerMessageSocket(io);
 
 server.listen(PORT, () => {
   console.log(`EthioSwapSkill server running on port ${PORT}`);
