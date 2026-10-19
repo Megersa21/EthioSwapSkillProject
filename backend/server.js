@@ -16,6 +16,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const registerSessionSocket = require('./socket/sessionSocket');
 const registerMessageSocket = require('./socket/messageSocket');
 const adminRoutes = require('./routes/adminRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -38,6 +39,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reports', reportRoutes);
 
 app.get('/', (req, res) => {
   res.json({

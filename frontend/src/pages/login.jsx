@@ -45,12 +45,13 @@ export default function Login() {
       }
 
       localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
 
-      if (result.user) {
-        localStorage.setItem('user', JSON.stringify(result.user));
+      if (result.user?.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
       }
-
-      navigate('/dashboard');
     } catch (err) {
       setError(
         err.message ||

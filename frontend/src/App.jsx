@@ -21,6 +21,8 @@ import LiveSessionRoom from './pages/LiveSessionRoom.jsx';
 import SessionReview from './pages/SessionReview.jsx';
 import MySkills from './pages/mySkill.jsx';
 import VideoCall from './pages/videoCall.jsx';
+import Help from './pages/Help.jsx';
+import Footer from './components/Footer.jsx';
 
 import './App.css';
 
@@ -62,6 +64,7 @@ function App() {
 
         {/* Existing video-call page */}
         <Route path="/video-call/:sessionId" element={<VideoCall />} />
+        <Route path="/help" element={<Help />} />
       </Routes>
     </BrowserRouter>
   );

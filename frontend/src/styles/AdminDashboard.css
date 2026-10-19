@@ -685,3 +685,55 @@
     min-height: 42px;
   }
 }
+
+.admin-users-search select,
+.admin-table td select,
+.admin-table td textarea {
+  max-width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #d5deea;
+  border-radius: 8px;
+  background: #fff;
+  color: #172b4d;
+  font: inherit;
+}
+
+.admin-users-search select {
+  margin-left: 10px;
+}
+
+.admin-table td textarea {
+  min-width: 160px;
+  resize: vertical;
+}
+
+.admin-report-description {
+  min-width: 180px;
+  max-width: 300px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-audit-details {
+  max-width: 320px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: inherit;
+}
+
+.admin-table td {
+  vertical-align: top;
+}
+
+@media (max-width: 700px) {
+  .admin-users-search select {
+    display: block;
+    margin: 10px 0 0;
+  }
+
+  .admin-audit-details {
+    max-width: 200px;
+  }
+}
