@@ -18,6 +18,7 @@ const POPULAR_SKILLS = [
 ];
 
 async function apiRequest(path, options = {}) {
+  // The token is used only for authentication, not for application data.
   const token = localStorage.getItem('token');
 
   if (!token) {
@@ -57,15 +58,16 @@ function normalizeLevel(level) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function getInitials(name) {
-  return (name || 'Member')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
+function getInitials(name = '') {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('') || 'U'
+  );
 }
 
 function getSkillsFromResponse(result) {
@@ -76,19 +78,19 @@ function getRequestsFromResponse(result) {
   return Array.isArray(result?.requests) ? result.requests : [];
 }
 
-function getRecipientId(request) {
+function getPartnerIdFromRequest(request) {
+  // A sent request's partner is the recipient.
   return request.recipient_id ?? request.recipientId;
 }
 
 function getRequestStatus(requests, partnerId) {
-  const matching = requests.filter((request) => {
-    const status = String(request.status || '').toLowerCase();
-
-    return (
-      String(getRecipientId(request)) === String(partnerId) &&
-      ['pending', 'accepted'].includes(status)
-    );
-  });
+  const matching = requests.filter(
+    (request) =>
+      String(getPartnerIdFromRequest(request)) === String(partnerId) &&
+      ['pending', 'accepted'].includes(
+        String(request.status || '').toLowerCase(),
+      ),
+  );
 
   if (
     matching.some(
@@ -145,7 +147,7 @@ function Discover() {
       setMySkills(ownSkills);
       setRequests(sentRequests);
 
-      // Build one card per other user, keeping every skill's database ID.
+      // Group all database skill records into one card per member.
       const grouped = new Map();
 
       discoveredSkills.forEach((skill) => {
@@ -163,6 +165,8 @@ function Discover() {
             name: userName,
             initials: getInitials(userName),
             location: skill.location || 'Location not provided',
+            title: skill.title || 'Skill Swap Member',
+            profilePicture: skill.profile_image || '',
             teaches: [],
             teachSkillIds: {},
             wants: [],
@@ -182,13 +186,15 @@ function Discover() {
         const type = normalizeSkillType(skill.skill_type);
 
         if (type === 'teach') {
-          const existingName = person.teaches.find(
-            (name) => name.toLowerCase() === skillName.toLowerCase(),
-          );
+          const normalizedName = skillName.toLowerCase();
 
-          if (!existingName) {
+          if (
+            !person.teaches.some(
+              (name) => name.toLowerCase() === normalizedName,
+            )
+          ) {
             person.teaches.push(skillName);
-            person.teachSkillIds[skillName.toLowerCase()] = skill.id;
+            person.teachSkillIds[normalizedName] = skill.id;
             person.levels.push(normalizeLevel(skill.proficiency_level));
           }
         } else if (type === 'learn') {
@@ -263,6 +269,7 @@ function Discover() {
       return (
         (!query ||
           person.name.toLowerCase().includes(query) ||
+          person.title.toLowerCase().includes(query) ||
           person.location.toLowerCase().includes(query) ||
           skills.some((skill) => skill.toLowerCase().includes(query))) &&
         (selectedSkill === 'All skills' ||
@@ -308,14 +315,13 @@ function Discover() {
       return;
     }
 
-    const existingRequest = requests.find((request) => {
-      return (
-        String(getRecipientId(request)) === String(person.id) &&
+    const existingRequest = requests.find(
+      (request) =>
+        String(getPartnerIdFromRequest(request)) === String(person.id) &&
         ['pending', 'accepted'].includes(
           String(request.status || '').toLowerCase(),
-        )
-      );
-    });
+        ),
+    );
 
     if (existingRequest) {
       setFeedback(
@@ -348,12 +354,13 @@ function Discover() {
         body: JSON.stringify({
           offered_skill_id: offeredSkill.id,
           wanted_skill_id: wantedSkillId,
-          note: `Hello ${person.name}, I would like to exchange skills with you.`,
+          message: `Hello ${person.name}, I can teach you ${offeredSkill.skill_name} and would like to learn ${wantedSkillName} from you. Would you like to exchange skills?`,
         }),
       });
 
       setFeedback(`Your request to ${person.name} was sent successfully.`);
 
+      // Reload request statuses from PostgreSQL after creating the request.
       const result = await apiRequest('/requests?direction=sent');
       setRequests(getRequestsFromResponse(result));
     } catch (requestError) {
@@ -517,8 +524,22 @@ function Discover() {
                       <article className="partner-card" key={person.id}>
                         <div className="partner-card-top">
                           <div className={`partner-avatar ${person.color}`}>
-                            {person.initials}
+                            {person.profilePicture ? (
+                              <img
+                                src={person.profilePicture}
+                                alt={`${person.name}'s profile`}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  borderRadius: '50%',
+                                }}
+                              />
+                            ) : (
+                              person.initials
+                            )}
                           </div>
+
                           <div className="partner-match">
                             <strong>{person.match}%</strong>
                             <span>skill match</span>
@@ -529,6 +550,7 @@ function Discover() {
                         <p className="partner-location">
                           <span aria-hidden="true">⌖</span> {person.location}
                         </p>
+                        <p>{person.title}</p>
 
                         <div className="partner-stats">
                           <span>Rating not available</span>
@@ -621,6 +643,7 @@ function Discover() {
           </div>
         </section>
       </main>
+
       <Footer />
     </>
   );

@@ -5,7 +5,11 @@ const createSkill = async (req, res) => {
   try {
     const { skill_name, description, skill_type, proficiency_level } = req.body;
 
-    if (!skill_name?.trim() || !['teach', 'learn'].includes(skill_type)) {
+    if (
+      typeof skill_name !== 'string' ||
+      !skill_name.trim() ||
+      !['teach', 'learn'].includes(skill_type)
+    ) {
       return res.status(400).json({
         status: 'error',
         message:
@@ -30,7 +34,7 @@ const createSkill = async (req, res) => {
       [
         req.user.userId,
         skill_name.trim(),
-        description?.trim() || null,
+        typeof description === 'string' ? description.trim() || null : null,
         skill_type,
         proficiency_level || null,
       ],
@@ -50,11 +54,12 @@ const createSkill = async (req, res) => {
   }
 };
 
-// Get the logged-in user's skills
+// Get the logged-in user's skills from PostgreSQL
 const getMySkills = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM public.skills
+      `SELECT *
+       FROM public.skills
        WHERE user_id = $1
        ORDER BY created_at DESC`,
       [req.user.userId],
@@ -74,7 +79,7 @@ const getMySkills = async (req, res) => {
   }
 };
 
-// Discover skills offered by other users
+// Discover other members' skills and profile information
 const discoverSkills = async (req, res) => {
   try {
     const { q = '', skill_type, proficiency_level } = req.query;
@@ -82,11 +87,16 @@ const discoverSkills = async (req, res) => {
     const conditions = ['s.user_id <> $1'];
     const values = [req.user.userId];
 
-    if (q.trim()) {
+    if (typeof q === 'string' && q.trim()) {
       values.push(`%${q.trim()}%`);
+      const searchIndex = values.length;
+
       conditions.push(
-        `(s.skill_name ILIKE $${values.length}
-          OR COALESCE(s.description, '') ILIKE $${values.length})`,
+        `(s.skill_name ILIKE $${searchIndex}
+          OR COALESCE(s.description, '') ILIKE $${searchIndex}
+          OR COALESCE(u.full_name, '') ILIKE $${searchIndex}
+          OR COALESCE(u.location, '') ILIKE $${searchIndex}
+          OR COALESCE(u.title, '') ILIKE $${searchIndex})`,
       );
     }
 
@@ -115,16 +125,7 @@ const discoverSkills = async (req, res) => {
       values.push(proficiency_level);
       conditions.push(`s.proficiency_level = $${values.length}`);
     }
-    console.log('Logged-in user ID:', req.user.userId);
-    console.log('Discover filters:', conditions);
-    console.log('Database name check starting...');
 
-    const dbInfo = await pool.query(`
-  SELECT current_database() AS database_name,
-         current_schema() AS schema_name
-`);
-
-    console.log('Backend database:', dbInfo.rows[0]);
     const result = await pool.query(
       `SELECT
          s.id,
@@ -134,16 +135,18 @@ const discoverSkills = async (req, res) => {
          s.skill_type,
          s.proficiency_level,
          s.created_at,
-         u.full_name AS user_name
+         u.full_name AS user_name,
+         u.title,
+         u.location,
+         u.profile_image,
+         u.availability,
+         u.experience_level
        FROM public.skills s
        JOIN public.users u ON u.id = s.user_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.created_at DESC`,
       values,
     );
-
-    console.log('Skills returned:', result.rows.length);
-    console.table(result.rows);
 
     return res.status(200).json({
       status: 'success',
@@ -166,7 +169,8 @@ const updateSkill = async (req, res) => {
     const { skill_name, description, skill_type, proficiency_level } = req.body;
 
     const existing = await pool.query(
-      `SELECT * FROM public.skills
+      `SELECT *
+       FROM public.skills
        WHERE id = $1 AND user_id = $2`,
       [id, req.user.userId],
     );

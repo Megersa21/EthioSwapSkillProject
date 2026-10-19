@@ -47,16 +47,22 @@ function registerSessionSocket(io) {
       try {
         const result = await pool.query(
           `SELECT
-             s.id AS session_id,
-             s.status,
-             u.full_name
-           FROM public.sessions s
-           JOIN public.swap_requests sr
-             ON sr.id = s.swap_request_id
-           JOIN public.users u
-             ON u.id = $2
-           WHERE s.id = $1
-             AND (sr.requester_id = $2 OR sr.recipient_id = $2)`,
+     s.id AS session_id,
+     s.status,
+     own.full_name AS user_name,
+     partner.full_name AS partner_name
+   FROM public.sessions s
+   JOIN public.swap_requests sr
+     ON sr.id = s.swap_request_id
+   JOIN public.users own
+     ON own.id = $2
+   JOIN public.users partner
+     ON partner.id = CASE
+       WHEN sr.requester_id = $2 THEN sr.recipient_id
+       ELSE sr.requester_id
+     END
+   WHERE s.id = $1
+     AND (sr.requester_id = $2 OR sr.recipient_id = $2)`,
           [sessionId, userId],
         );
 
@@ -68,11 +74,16 @@ function registerSessionSocket(io) {
         }
 
         const session = result.rows[0];
+        socket.data.userName = session.full_name;
+        socket.data.userName = session.user_name;
 
         if (session.status === 'cancelled' || session.status === 'completed') {
           return reply({
-            status: 'error',
-            message: 'This session is no longer available.',
+            status: 'success',
+            sessionId: session.session_id,
+            userId,
+            userName: session.user_name,
+            partnerName: session.partner_name,
           });
         }
 

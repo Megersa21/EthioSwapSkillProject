@@ -1,61 +1,8 @@
-import { useParams, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import '../styles/Profile.css';
 
-const sampleProfiles = {
-  1: {
-    name: 'Dawit Alemu',
-    location: 'Addis Ababa, Ethiopia',
-    initials: 'DA',
-    title: 'Frontend Developer',
-    bio: 'I enjoy building modern websites and helping others learn web development. I am looking for partners to exchange technical and creative skills.',
-    teachSkills: ['React', 'JavaScript', 'HTML & CSS'],
-    learnSkills: ['UI/UX Design', 'Graphic Design'],
-    level: 'Intermediate',
-    availability: 'Weekends',
-    sessions: 12,
-    rating: '4.9',
-    profilePicture: '',
-  },
-  2: {
-    name: 'Meron Bekele',
-    location: 'Dire Dawa, Ethiopia',
-    initials: 'MB',
-    title: 'Mobile App Developer',
-    bio: 'I love developing mobile applications with Flutter. I want to improve my design skills while sharing what I know about mobile development.',
-    teachSkills: ['Flutter', 'Dart', 'Mobile Development'],
-    learnSkills: ['UI/UX Design', 'React'],
-    level: 'Intermediate',
-    availability: 'Evenings',
-    sessions: 8,
-    rating: '4.8',
-    profilePicture: '',
-  },
-  3: {
-    name: 'Yonas Tesfaye',
-    location: 'Hawassa, Ethiopia',
-    initials: 'YT',
-    title: 'UI/UX Designer',
-    bio: 'I design user-friendly digital experiences and enjoy collaborating with developers. I am interested in learning more about frontend development.',
-    teachSkills: ['UI/UX Design', 'Figma', 'Wireframing'],
-    learnSkills: ['JavaScript', 'React'],
-    level: 'Advanced',
-    availability: 'Flexible',
-    sessions: 15,
-    rating: '5.0',
-    profilePicture: '',
-  },
-};
-
-function readSavedProfile() {
-  try {
-    const saved = localStorage.getItem('swapSkillMyProfile');
-    return saved ? JSON.parse(saved) : null;
-  } catch (error) {
-    console.error('Could not load saved profile:', error);
-    return null;
-  }
-}
+const API_BASE = 'http://localhost:5000/api/profiles';
 
 function getInitials(name = '') {
   return (
@@ -67,6 +14,24 @@ function getInitials(name = '') {
       .map((part) => part[0].toUpperCase())
       .join('') || 'U'
   );
+}
+
+function normalizeProfile(data) {
+  return {
+    id: data.id,
+    name: data.full_name || 'Skill Swap Member',
+    location: data.location || 'Location not specified',
+    initials: getInitials(data.full_name),
+    title: data.title || 'Skill Swap Member',
+    bio: data.bio || '',
+    teachSkills: Array.isArray(data.teach_skills) ? data.teach_skills : [],
+    learnSkills: Array.isArray(data.learn_skills) ? data.learn_skills : [],
+    level: data.experience_level || 'Beginner',
+    availability: data.availability || 'Not specified',
+    profilePicture: data.profile_image || '',
+    sessions: 0,
+    rating: 'New',
+  };
 }
 
 function readRequests() {
@@ -83,70 +48,114 @@ function Profile() {
   const { id } = useParams();
   const isOwnProfile = id === 'me';
 
-  const [savedProfile, setSavedProfile] = useState(readSavedProfile);
+  const [profile, setProfile] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [requestSent, setRequestSent] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
 
   useEffect(() => {
-    function refreshProfile() {
-      setSavedProfile(readSavedProfile());
+    const controller = new AbortController();
+
+    async function loadProfile() {
+      setIsLoading(true);
+      setLoadError('');
+      setProfile(null);
+      setRequestMessage('');
+
+      try {
+        let url;
+        const headers = {};
+
+        if (isOwnProfile) {
+          const token = localStorage.getItem('token');
+
+          if (!token) {
+            throw new Error('Please log in to view your profile.');
+          }
+
+          url = `${API_BASE}/me`;
+          headers.Authorization = `Bearer ${token}`;
+        } else {
+          if (!/^\d+$/.test(id || '') || Number(id) <= 0) {
+            throw new Error('This profile has an invalid user ID.');
+          }
+
+          url = `${API_BASE}/${id}`;
+        }
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          signal: controller.signal,
+        });
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Could not load this profile.');
+        }
+
+        if (!result.data) {
+          throw new Error('No profile information was returned.');
+        }
+
+        const loadedProfile = normalizeProfile(result.data);
+
+        setProfile(loadedProfile);
+
+        // Keep the current Edit Profile page's compatibility data.
+        if (isOwnProfile) {
+          localStorage.setItem(
+            'swapSkillMyProfile',
+            JSON.stringify({
+              ...loadedProfile,
+              sessions: 0,
+              rating: 'New',
+            }),
+          );
+        }
+
+        if (!isOwnProfile) {
+          const alreadySent = readRequests().some(
+            (request) =>
+              request.direction === 'outgoing' &&
+              String(request.partnerId) === String(loadedProfile.id) &&
+              !['Cancelled', 'Rejected'].includes(request.status),
+          );
+
+          setRequestSent(alreadySent);
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Load profile error:', error);
+          setLoadError(error.message || 'Unable to load this profile.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
     }
 
-    window.addEventListener('focus', refreshProfile);
-    window.addEventListener('storage', refreshProfile);
+    loadProfile();
 
-    return () => {
-      window.removeEventListener('focus', refreshProfile);
-      window.removeEventListener('storage', refreshProfile);
-    };
-  }, []);
-
-  const profile = isOwnProfile
-    ? {
-        ...(savedProfile || {}),
-        name: savedProfile?.name || 'Your Name',
-        initials: getInitials(savedProfile?.name),
-        title: savedProfile?.title || 'Skill Swap Member',
-        location: savedProfile?.location || 'Location not specified',
-        bio: savedProfile?.bio || '',
-        profilePicture: savedProfile?.profilePicture || '',
-        teachSkills: Array.isArray(savedProfile?.teachSkills)
-          ? savedProfile.teachSkills
-          : [],
-        learnSkills: Array.isArray(savedProfile?.learnSkills)
-          ? savedProfile.learnSkills
-          : [],
-        level: savedProfile?.level || 'Beginner',
-        availability: savedProfile?.availability || 'Not specified',
-        sessions: savedProfile?.sessions ?? 0,
-        rating: savedProfile?.rating ?? 'New',
-      }
-    : sampleProfiles[id] || sampleProfiles[1];
-
-  useEffect(() => {
-    if (isOwnProfile) return;
-
-    const alreadySent = readRequests().some(
-      (request) =>
-        request.direction === 'outgoing' &&
-        String(request.partnerId) === String(id) &&
-        request.status !== 'Cancelled' &&
-        request.status !== 'Rejected',
-    );
-
-    setRequestSent(alreadySent);
+    return () => controller.abort();
   }, [id, isOwnProfile]);
 
   function sendRequest() {
+    if (!profile) return;
+
+    setRequestMessage('');
+
     try {
       const existingRequests = readRequests();
 
       const alreadyExists = existingRequests.some(
         (request) =>
           request.direction === 'outgoing' &&
-          String(request.partnerId) === String(id) &&
-          request.status !== 'Cancelled' &&
-          request.status !== 'Rejected',
+          String(request.partnerId) === String(profile.id) &&
+          !['Cancelled', 'Rejected'].includes(request.status),
       );
 
       if (alreadyExists) {
@@ -157,11 +166,18 @@ function Profile() {
         return;
       }
 
-      const ownProfile = readSavedProfile();
+      const ownProfile = (() => {
+        try {
+          const saved = localStorage.getItem('swapSkillMyProfile');
+          return saved ? JSON.parse(saved) : null;
+        } catch {
+          return null;
+        }
+      })();
 
       if (!ownProfile) {
         setRequestMessage(
-          'Please create your profile before sending a request.',
+          'Please open Edit Profile and save your profile before sending a request.',
         );
         return;
       }
@@ -171,7 +187,7 @@ function Profile() {
 
       if (!offeredSkill || !wantedSkill) {
         setRequestMessage(
-          'Both you and this member need teaching skills before you can create a skill exchange.',
+          'Both members need teaching skills before a skill exchange can be requested.',
         );
         return;
       }
@@ -179,7 +195,7 @@ function Profile() {
       const newRequest = {
         id: `req-${Date.now()}`,
         direction: 'outgoing',
-        partnerId: String(id),
+        partnerId: String(profile.id),
         name: profile.name,
         initials: profile.initials,
         location: profile.location,
@@ -198,9 +214,42 @@ function Profile() {
       setRequestSent(true);
       setRequestMessage('Your skill-swap request has been created.');
     } catch (error) {
-      console.error('Could not save skill swap request:', error);
+      console.error('Could not save skill-swap request:', error);
       setRequestMessage('Could not save your request. Please try again.');
     }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="profile-page">
+        <p>Loading profile...</p>
+      </main>
+    );
+  }
+
+  if (loadError || !profile) {
+    return (
+      <main className="profile-page">
+        <Link
+          to={isOwnProfile ? '/dashboard' : '/discover'}
+          className="profile-back-link"
+        >
+          {isOwnProfile ? '← Back to Dashboard' : '← Back to Discover'}
+        </Link>
+
+        <section className="profile-card">
+          <h2>Unable to load profile</h2>
+          <p role="alert">{loadError || 'This profile could not be found.'}</p>
+          <button
+            type="button"
+            className="profile-request-button"
+            onClick={() => window.location.reload()}
+          >
+            Try Again
+          </button>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -278,7 +327,7 @@ function Profile() {
 
           <div className="profile-detail">
             <span>Availability</span>
-            <strong>{profile.availability || 'Not specified'}</strong>
+            <strong>{profile.availability}</strong>
           </div>
         </section>
 

@@ -14,10 +14,12 @@ function LiveSessionRoom() {
   const navigate = useNavigate();
   const { sessionId } = useParams();
 
+  // Video elements
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const screenShareVideoRef = useRef(null);
 
+  // Media streams
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const remoteScreenStreamRef = useRef(null);
@@ -25,12 +27,16 @@ function LiveSessionRoom() {
   const screenSenderRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
+  // Connection state
   const pendingCandidatesRef = useRef([]);
   const roomJoinedRef = useRef(false);
   const offerInProgressRef = useRef(false);
   const offerPendingRef = useRef(false);
-  const mountedRef = useRef(false);
+  const micOnRef = useRef(true);
+  const videoOnRef = useRef(true);
+  const createOfferRef = useRef(null);
 
+  // UI state
   const [micOn, setMicOn] = useState(true);
   const [videoOn, setVideoOn] = useState(true);
   const [sharing, setSharing] = useState(false);
@@ -59,6 +65,7 @@ function LiveSessionRoom() {
     }
   });
 
+  // Keep local media acquisition stable when React state changes.
   const ensureLocalStream = useCallback(async () => {
     if (localStreamRef.current) {
       return localStreamRef.current;
@@ -76,21 +83,36 @@ function LiveSessionRoom() {
     });
 
     stream.getAudioTracks().forEach((track) => {
-      track.enabled = micOn;
+      track.enabled = micOnRef.current;
     });
 
     stream.getVideoTracks().forEach((track) => {
-      track.enabled = videoOn;
+      track.enabled = videoOnRef.current;
     });
 
     localStreamRef.current = stream;
 
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
+      localVideoRef.current.play().catch(() => {});
     }
 
     return stream;
-  }, [micOn, videoOn]);
+  }, []);
+
+  const addPendingCandidates = useCallback(async (pc) => {
+    if (!pc.remoteDescription) return;
+
+    const candidates = pendingCandidatesRef.current.splice(0);
+
+    for (const candidate of candidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error('Could not apply ICE candidate:', error);
+      }
+    }
+  }, []);
 
   const createPeerConnection = useCallback(async () => {
     if (peerConnectionRef.current) {
@@ -101,10 +123,10 @@ function LiveSessionRoom() {
     peerConnectionRef.current = pc;
 
     try {
-      const stream = await ensureLocalStream();
+      const localStream = await ensureLocalStream();
 
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
       });
     } catch (error) {
       console.error('Could not access camera or microphone:', error);
@@ -115,69 +137,67 @@ function LiveSessionRoom() {
 
     pc.ontrack = (event) => {
       const track = event.track;
+      const incomingStream = event.streams?.[0];
 
-      if (track.kind === 'video') {
-        if (!remoteStreamRef.current) {
-          remoteStreamRef.current = new MediaStream();
+      // Screen sharing is sent as a separate video-only stream.
+      // The camera stream contains both audio and video tracks.
+      const isScreenTrack =
+        track.kind === 'video' &&
+        incomingStream &&
+        incomingStream.getAudioTracks().length === 0 &&
+        incomingStream.getVideoTracks().length > 0;
+
+      if (isScreenTrack) {
+        if (!remoteScreenStreamRef.current) {
+          remoteScreenStreamRef.current = new MediaStream();
         }
 
-        const cameraAlreadyReceived =
-          remoteStreamRef.current.getVideoTracks().length > 0;
+        const screenStream = remoteScreenStreamRef.current;
 
-        // The initial video track is the partner's camera.
-        // A second video track is the separately added screen.
-        if (cameraAlreadyReceived) {
-          if (!remoteScreenStreamRef.current) {
-            remoteScreenStreamRef.current = new MediaStream();
-          }
+        if (!screenStream.getTracks().some((item) => item.id === track.id)) {
+          screenStream.addTrack(track);
+        }
 
-          const screenStream = remoteScreenStreamRef.current;
+        setPartnerSharing(true);
 
-          if (!screenStream.getTracks().some((t) => t.id === track.id)) {
-            screenStream.addTrack(track);
-          }
+        if (screenShareVideoRef.current && !sharing) {
+          screenShareVideoRef.current.srcObject = screenStream;
+          screenShareVideoRef.current.play().catch(() => {});
+        }
 
-          setPartnerSharing(true);
+        track.addEventListener(
+          'ended',
+          () => {
+            const currentScreen = remoteScreenStreamRef.current;
 
-          if (screenShareVideoRef.current) {
-            screenShareVideoRef.current.srcObject = screenStream;
-            screenShareVideoRef.current.play().catch(() => {});
-          }
+            if (currentScreen) {
+              currentScreen
+                .getTracks()
+                .filter((item) => item.id === track.id)
+                .forEach((item) => currentScreen.removeTrack(item));
 
-          track.addEventListener(
-            'ended',
-            () => {
-              if (remoteScreenStreamRef.current) {
-                remoteScreenStreamRef.current
-                  .getTracks()
-                  .filter((t) => t.id === track.id)
-                  .forEach((t) => {
-                    remoteScreenStreamRef.current.removeTrack(t);
-                  });
+              if (currentScreen.getVideoTracks().length === 0) {
+                remoteScreenStreamRef.current = null;
+                setPartnerSharing(false);
 
-                if (
-                  remoteScreenStreamRef.current.getVideoTracks().length === 0
-                ) {
-                  remoteScreenStreamRef.current = null;
-                  setPartnerSharing(false);
-
-                  if (screenShareVideoRef.current) {
-                    screenShareVideoRef.current.srcObject = null;
-                  }
+                if (!sharing && screenShareVideoRef.current) {
+                  screenShareVideoRef.current.srcObject = null;
                 }
               }
-            },
-            { once: true },
-          );
+            }
+          },
+          { once: true },
+        );
 
-          return;
-        }
+        return;
       }
 
+      // Keep the partner's camera and microphone in their own stream.
       const remoteStream = remoteStreamRef.current || new MediaStream();
+
       remoteStreamRef.current = remoteStream;
 
-      if (!remoteStream.getTracks().some((t) => t.id === track.id)) {
+      if (!remoteStream.getTracks().some((item) => item.id === track.id)) {
         remoteStream.addTrack(track);
       }
 
@@ -219,7 +239,8 @@ function LiveSessionRoom() {
       }
     };
 
-    // Retry a pending offer after the current negotiation finishes.
+    // If screen sharing needs renegotiation, retry once the connection
+    // returns to the stable signaling state.
     pc.onsignalingstatechange = () => {
       if (
         pc.signalingState === 'stable' &&
@@ -227,26 +248,12 @@ function LiveSessionRoom() {
         !offerInProgressRef.current
       ) {
         offerPendingRef.current = false;
-        createOffer();
+        createOfferRef.current?.();
       }
     };
 
     return pc;
-  }, [ensureLocalStream]);
-
-  const addPendingCandidates = useCallback(async (pc) => {
-    if (!pc.remoteDescription) return;
-
-    const candidates = pendingCandidatesRef.current.splice(0);
-
-    for (const candidate of candidates) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (error) {
-        console.error('Could not apply ICE candidate:', error);
-      }
-    }
-  }, []);
+  }, [ensureLocalStream, sharing]);
 
   const createOffer = useCallback(async () => {
     if (!roomJoinedRef.current) return;
@@ -283,6 +290,10 @@ function LiveSessionRoom() {
     }
   }, [createPeerConnection]);
 
+  // Keep the negotiation callback accessible to peer connection handlers
+  // without making the main socket effect restart on every render.
+  createOfferRef.current = createOffer;
+
   const handleOffer = useCallback(
     async (payload) => {
       if (!payload?.offer || !roomJoinedRef.current) return;
@@ -291,7 +302,8 @@ function LiveSessionRoom() {
         const pc = await createPeerConnection();
 
         if (pc.signalingState !== 'stable') {
-          console.warn('Offer received while connection is negotiating.');
+          offerPendingRef.current = true;
+          console.warn('Offer received while another negotiation is active.');
           return;
         }
 
@@ -340,14 +352,14 @@ function LiveSessionRoom() {
 
         if (offerPendingRef.current) {
           offerPendingRef.current = false;
-          await createOffer();
+          createOfferRef.current?.();
         }
       } catch (error) {
         console.error('Could not apply answer:', error);
         setRoomNotice('Could not complete the video connection.');
       }
     },
-    [addPendingCandidates, createOffer],
+    [addPendingCandidates],
   );
 
   const handleIceCandidate = useCallback(async (payload) => {
@@ -367,6 +379,7 @@ function LiveSessionRoom() {
     }
   }, []);
 
+  // Join the room and register socket listeners.
   useEffect(() => {
     if (!sessionId) {
       setConnectionStatus('Missing session ID');
@@ -381,7 +394,6 @@ function LiveSessionRoom() {
     }
 
     let active = true;
-    mountedRef.current = true;
 
     function joinRoom() {
       socket.emit('session:join', { sessionId }, (result) => {
@@ -411,6 +423,7 @@ function LiveSessionRoom() {
 
     function handleConnectError(error) {
       if (!active) return;
+
       setConnectionStatus('Connection failed');
       setRoomNotice(error.message || 'Could not connect to the server.');
     }
@@ -418,15 +431,16 @@ function LiveSessionRoom() {
     function handleParticipantJoined(participant) {
       if (!active) return;
 
-      if (participant.userName) {
+      if (participant?.userName) {
         setPartnerName(participant.userName);
       }
 
       setRoomNotice(
-        `${participant.userName || 'Your partner'} joined the session.`,
+        `${participant?.userName || 'Your partner'} joined the session.`,
       );
 
-      createOffer();
+      // The existing participant initiates the first call.
+      createOfferRef.current?.();
     }
 
     function handleParticipantLeft(participant) {
@@ -436,11 +450,12 @@ function LiveSessionRoom() {
       setPartnerSharing(false);
 
       setRoomNotice(
-        `${participant.userName || 'Your partner'} left the session.`,
+        `${participant?.userName || 'Your partner'} left the session.`,
       );
 
       peerConnectionRef.current?.close();
       peerConnectionRef.current = null;
+
       remoteStreamRef.current = null;
       remoteScreenStreamRef.current = null;
       pendingCandidatesRef.current = [];
@@ -450,7 +465,7 @@ function LiveSessionRoom() {
         remoteVideoRef.current.srcObject = null;
       }
 
-      if (screenShareVideoRef.current) {
+      if (screenShareVideoRef.current && !sharing) {
         screenShareVideoRef.current.srcObject = null;
       }
     }
@@ -494,7 +509,6 @@ function LiveSessionRoom() {
 
     return () => {
       active = false;
-      mountedRef.current = false;
       roomJoinedRef.current = false;
 
       socket.off('connect', handleConnect);
@@ -518,19 +532,22 @@ function LiveSessionRoom() {
   }, [
     sessionId,
     currentUserId,
-    createOffer,
     handleOffer,
     handleAnswer,
     handleIceCandidate,
+    sharing,
   ]);
 
+  // Attach streams when their corresponding video elements render.
   useEffect(() => {
     if (localVideoRef.current && localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.play().catch(() => {});
     }
 
     if (remoteVideoRef.current && remoteStreamRef.current) {
       remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      remoteVideoRef.current.play().catch(() => {});
     }
 
     if (screenShareVideoRef.current) {
@@ -540,8 +557,9 @@ function LiveSessionRoom() {
         screenShareVideoRef.current.srcObject = remoteScreenStreamRef.current;
       }
     }
-  }, [sharing, partnerSharing, remoteConnected, videoOn]);
+  }, [sharing, partnerSharing, remoteConnected, videoOn, chatVisible]);
 
+  // Session timer.
   useEffect(() => {
     const timer = window.setInterval(() => {
       setElapsed((value) => value + 1);
@@ -551,6 +569,7 @@ function LiveSessionRoom() {
     return () => window.clearInterval(timer);
   }, []);
 
+  // Final cleanup when the component is removed.
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -568,6 +587,7 @@ function LiveSessionRoom() {
 
   function toggleMic() {
     const next = !micOn;
+    micOnRef.current = next;
     setMicOn(next);
 
     localStreamRef.current?.getAudioTracks().forEach((track) => {
@@ -577,6 +597,7 @@ function LiveSessionRoom() {
 
   function toggleVideo() {
     const next = !videoOn;
+    videoOnRef.current = next;
     setVideoOn(next);
 
     localStreamRef.current?.getVideoTracks().forEach((track) => {
@@ -592,7 +613,7 @@ function LiveSessionRoom() {
 
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setRoomNotice(
-        'Screen sharing is not supported here. Open the site in a supported browser using HTTPS or localhost.',
+        'Screen sharing is not supported here. Use a supported browser over HTTPS or localhost.',
       );
       return;
     }
@@ -621,8 +642,6 @@ function LiveSessionRoom() {
       }
 
       screenStreamRef.current = stream;
-
-      // Add a separate video track. The camera track remains active.
       screenSenderRef.current = pc.addTrack(track, stream);
 
       if (screenShareVideoRef.current) {
@@ -631,7 +650,7 @@ function LiveSessionRoom() {
       }
 
       setSharing(true);
-      setRoomNotice('Screen selected. Connecting the shared screen...');
+      setRoomNotice('Connecting the shared screen...');
 
       track.addEventListener(
         'ended',
@@ -643,8 +662,7 @@ function LiveSessionRoom() {
         { once: true },
       );
 
-      // Renegotiate the peer connection to send the new screen track.
-      await createOffer();
+      await createOfferRef.current?.();
 
       setRoomNotice('Screen sharing started.');
     } catch (error) {
@@ -673,6 +691,8 @@ function LiveSessionRoom() {
     const pc = peerConnectionRef.current;
     const sender = screenSenderRef.current;
 
+    screenSenderRef.current = null;
+
     if (sender && pc) {
       try {
         pc.removeTrack(sender);
@@ -681,14 +701,10 @@ function LiveSessionRoom() {
       }
     }
 
-    screenSenderRef.current = null;
-
     const stream = screenStreamRef.current;
     screenStreamRef.current = null;
 
-    stream?.getTracks().forEach((track) => {
-      track.stop();
-    });
+    stream?.getTracks().forEach((track) => track.stop());
 
     setSharing(false);
 
@@ -698,7 +714,7 @@ function LiveSessionRoom() {
 
     if (pc && roomJoinedRef.current) {
       offerPendingRef.current = true;
-      await createOffer();
+      await createOfferRef.current?.();
     }
 
     setRoomNotice('Screen sharing stopped.');
@@ -749,6 +765,7 @@ function LiveSessionRoom() {
 
   function swapRoles() {
     const nextTurn = turn === 1 ? 2 : 1;
+
     setTurn(nextTurn);
     setSecondsLeft(25 * 60);
 
@@ -1014,7 +1031,9 @@ function LiveSessionRoom() {
                           {item.senderName || partnerName}
                         </span>
                       )}
+
                       <span className="chat-message-text">{item.text}</span>
+
                       <time className="chat-message-time">
                         {item.createdAt
                           ? new Date(item.createdAt).toLocaleTimeString([], {
@@ -1043,6 +1062,7 @@ function LiveSessionRoom() {
                   maxLength={2000}
                   disabled={!roomJoined}
                 />
+
                 <button
                   type="submit"
                   disabled={!roomJoined || !message.trim()}

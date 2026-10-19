@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import '../styles/Navbar.css';
 
+const API_URL = 'http://localhost:5000/api';
 const defaultUnreadCount = 2;
 
 function getUnreadCount() {
@@ -20,26 +21,25 @@ function getUnreadCount() {
   }
 }
 
-function getDisplayName() {
-  try {
-    const savedUser = localStorage.getItem('user');
-
-    if (savedUser) {
-      const user = JSON.parse(savedUser);
-      const name =
-        user?.full_name || user?.fullName || user?.name || user?.username;
-
-      if (name) return name;
-    }
-  } catch {
-    // Continue with the other saved name values.
-  }
-
+function getProfileFromResponse(result) {
   return (
-    localStorage.getItem('userName') ||
-    localStorage.getItem('name') ||
-    'My Account'
+    result?.profile ||
+    result?.user ||
+    result?.data?.profile ||
+    result?.data ||
+    result
   );
+}
+
+function getInitials(name) {
+  if (!name || typeof name !== 'string') return 'A';
+
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
 }
 
 function Navbar() {
@@ -53,13 +53,74 @@ function Navbar() {
     Boolean(localStorage.getItem('token')),
   );
 
-  const displayName = getDisplayName();
-  const initial = displayName.charAt(0).toUpperCase() || 'A';
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  const displayName =
+    profile?.full_name || profile?.fullName || profile?.name || 'My Account';
+
+  const initial = getInitials(displayName);
+
+  const profileImage =
+    profile?.profile_image || profile?.profileImage || profile?.avatar || '';
 
   useEffect(() => {
-    setIsLoggedIn(Boolean(localStorage.getItem('token')));
+    const loggedIn = Boolean(localStorage.getItem('token'));
+
+    setIsLoggedIn(loggedIn);
     setMenuOpen(false);
     setAccountOpen(false);
+  }, [location.pathname]);
+
+  // Load the logged-in user's profile from the database.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    let cancelled = false;
+
+    if (!token) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+
+    async function loadProfile() {
+      setProfileLoading(true);
+
+      try {
+        const response = await fetch(`${API_URL}/profiles/me`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Could not load your profile.');
+        }
+
+        const userProfile = getProfileFromResponse(result);
+
+        if (!cancelled && userProfile && typeof userProfile === 'object') {
+          setProfile(userProfile);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Navbar profile loading error:', error);
+        }
+      } finally {
+        if (!cancelled) {
+          setProfileLoading(false);
+        }
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
   }, [location.pathname]);
 
   useEffect(() => {
@@ -92,6 +153,7 @@ function Navbar() {
     localStorage.removeItem('userName');
     localStorage.removeItem('name');
 
+    setProfile(null);
     setIsLoggedIn(false);
     closeMenus();
     navigate('/login', { replace: true });
@@ -117,6 +179,7 @@ function Navbar() {
           <span className="navbar-brand-icon" aria-hidden="true">
             ⇄
           </span>
+
           <span className="navbar-brand-text">
             Ethio<span>SwapSkill</span>
           </span>
@@ -174,6 +237,7 @@ function Navbar() {
                   <span className="navbar-bell" aria-hidden="true">
                     🔔
                   </span>
+
                   <span className="navbar-notification-label">
                     Notifications
                   </span>
@@ -195,8 +259,23 @@ function Navbar() {
                     aria-expanded={accountOpen}
                     aria-label="Open account menu"
                   >
-                    <span className="navbar-avatar">{initial}</span>
-                    <span className="navbar-account-name">{displayName}</span>
+                    {profileImage ? (
+                      <img
+                        src={profileImage}
+                        alt={`${displayName}'s profile`}
+                        className="navbar-avatar navbar-avatar-image"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="navbar-avatar">{initial}</span>
+                    )}
+
+                    <span className="navbar-account-name">
+                      {profileLoading ? 'Loading...' : displayName}
+                    </span>
+
                     <span className="navbar-chevron" aria-hidden="true">
                       {accountOpen ? '⌃' : '⌄'}
                     </span>
@@ -205,16 +284,43 @@ function Navbar() {
                   {accountOpen && (
                     <div className="navbar-account-menu">
                       <div className="navbar-account-heading">
-                        <span className="navbar-avatar navbar-avatar-large">
-                          {initial}
-                        </span>
+                        {profileImage ? (
+                          <img
+                            src={profileImage}
+                            alt={`${displayName}'s profile`}
+                            className="navbar-avatar navbar-avatar-large navbar-avatar-image"
+                          />
+                        ) : (
+                          <span className="navbar-avatar navbar-avatar-large">
+                            {initial}
+                          </span>
+                        )}
+
                         <span className="navbar-account-details">
                           <strong>{displayName}</strong>
-                          <small>Skill Swapper</small>
+                          <small>{profile?.title || 'Skill Swapper'}</small>
                         </span>
                       </div>
 
                       <div className="navbar-menu-divider" />
+
+                      <NavLink
+                        to="/profile/me"
+                        onClick={closeMenus}
+                        className="navbar-dropdown-link"
+                      >
+                        <span aria-hidden="true">◉</span>
+                        My Profile
+                      </NavLink>
+
+                      <NavLink
+                        to="/edit-profile"
+                        onClick={closeMenus}
+                        className="navbar-dropdown-link"
+                      >
+                        <span aria-hidden="true">✎</span>
+                        Edit Profile
+                      </NavLink>
 
                       <NavLink
                         to="/requests"
@@ -262,6 +368,7 @@ function Navbar() {
                 <Link to="/login" className="navbar-login" onClick={closeMenus}>
                   Log in
                 </Link>
+
                 <Link
                   to="/register"
                   className="navbar-register"

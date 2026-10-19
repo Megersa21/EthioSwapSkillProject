@@ -18,61 +18,173 @@ async function apiRequest(path) {
     },
   });
 
-  const result = await response.json();
+  const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(result.message || 'Could not load dashboard data.');
+    throw new Error(result.message || `Could not load ${path}.`);
   }
 
   return result;
 }
 
+function normalizeSkillNames(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((skill) => typeof skill === 'string' && skill.trim())
+    .map((skill) => skill.trim());
+}
+
+function mergeSkills(profileSkills, listedSkills, type, level) {
+  const combined = [];
+  const seen = new Set();
+
+  // First, add skills saved when editing the profile.
+  normalizeSkillNames(profileSkills).forEach((name, index) => {
+    const key = name.toLowerCase();
+
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    combined.push({
+      id: `profile-${type}-${index}-${key}`,
+      skill_name: name,
+      skill_type: type,
+      proficiency_level: level || 'Level not specified',
+    });
+  });
+
+  // Then add skills saved as individual skill listings.
+  (Array.isArray(listedSkills) ? listedSkills : [])
+    .filter((skill) => skill.skill_type === type)
+    .forEach((skill) => {
+      const name = String(skill.skill_name || '').trim();
+      if (!name) return;
+
+      const key = name.toLowerCase();
+
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      combined.push({
+        ...skill,
+        id: skill.id ?? `listing-${type}-${key}`,
+        skill_name: name,
+        skill_type: type,
+        proficiency_level:
+          skill.proficiency_level || level || 'Level not specified',
+      });
+    });
+
+  return combined;
+}
+
 function Dashboard() {
+  const [profile, setProfile] = useState(null);
   const [skills, setSkills] = useState([]);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function loadDashboard() {
       try {
         setLoading(true);
         setError('');
 
-        const results = await Promise.allSettled([
-          apiRequest('/skills/my-skills'),
-          apiRequest('/requests'),
-        ]);
+        const token = localStorage.getItem('token');
 
-        if (cancelled) return;
-
-        if (results[0].status === 'fulfilled') {
-          setSkills(results[0].value.skills || []);
-        } else {
-          setError(results[0].reason.message);
+        if (!token) {
+          throw new Error('Please log in to view your dashboard.');
         }
 
-        if (results[1].status === 'fulfilled') {
-          setRequests(results[1].value.requests || []);
-        } else if (results[0].status === 'fulfilled') {
-          setError(results[1].reason.message);
+        const paths = ['/profiles/me', '/skills/my-skills', '/requests'];
+
+        const results = await Promise.allSettled(
+          paths.map(async (path) => {
+            const response = await fetch(`${API_URL}${path}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              signal: controller.signal,
+            });
+
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+              throw new Error(result.message || `Could not load ${path}.`);
+            }
+
+            return result;
+          }),
+        );
+
+        if (controller.signal.aborted) return;
+
+        const profileResult = results[0];
+        const skillsResult = results[1];
+        const requestsResult = results[2];
+
+        let loadedProfile = null;
+        let listedSkills = [];
+        let loadedRequests = [];
+        const errors = [];
+
+        if (profileResult.status === 'fulfilled') {
+          loadedProfile = profileResult.value.data || null;
+          setProfile(loadedProfile);
+        } else {
+          errors.push(profileResult.reason.message);
+        }
+
+        if (skillsResult.status === 'fulfilled') {
+          listedSkills = skillsResult.value.skills || [];
+        } else {
+          errors.push(skillsResult.reason.message);
+        }
+
+        if (requestsResult.status === 'fulfilled') {
+          loadedRequests = requestsResult.value.requests || [];
+          setRequests(loadedRequests);
+        } else {
+          errors.push(requestsResult.reason.message);
+        }
+
+        const teachingSkills = mergeSkills(
+          loadedProfile?.teach_skills,
+          listedSkills,
+          'teach',
+          loadedProfile?.experience_level,
+        );
+
+        const learningSkills = mergeSkills(
+          loadedProfile?.learn_skills,
+          listedSkills,
+          'learn',
+          loadedProfile?.experience_level,
+        );
+
+        setSkills([...teachingSkills, ...learningSkills]);
+
+        if (errors.length) {
+          setError(errors.join(' '));
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setError(err.message || 'Could not load your dashboard.');
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
     loadDashboard();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, []);
 
   const teachingSkills = skills.filter((skill) => skill.skill_type === 'teach');
@@ -87,10 +199,7 @@ function Dashboard() {
     (request) => request.status === 'accepted',
   );
 
-  const displayName =
-    localStorage.getItem('userName') ||
-    localStorage.getItem('name') ||
-    'Skill Swapper';
+  const displayName = profile?.full_name || 'Skill Swapper';
 
   return (
     <>

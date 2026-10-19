@@ -1,121 +1,197 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/EditProfile.css';
 
-const defaultProfile = {
-  name: 'Megersa Bekele',
-  title: 'Full-Stack Developer',
-  location: 'Dire Dawa, Ethiopia',
-  bio: "I'm interested in exchanging skills, learning new technologies, and collaborating with other developers.",
-  teachSkills: ['HTML', 'CSS', 'JavaScript', 'React'],
-  learnSkills: ['Node.js', 'UI/UX Design'],
-  availability: 'Weekends',
-  level: 'Intermediate',
+const API_URL = 'http://localhost:5000/api/profiles/me';
+
+const emptyProfile = {
+  name: '',
+  title: '',
+  location: '',
+  bio: '',
+  teachSkills: [],
+  learnSkills: [],
+  availability: 'Flexible',
+  level: 'Beginner',
   profilePicture: '',
 };
 
-function loadProfile() {
-  try {
-    const saved = localStorage.getItem('swapSkillMyProfile');
-
-    if (!saved) return { ...defaultProfile };
-
-    const parsed = JSON.parse(saved);
-
-    return {
-      ...defaultProfile,
-      ...parsed,
-      teachSkills: Array.isArray(parsed.teachSkills)
-        ? parsed.teachSkills
-        : defaultProfile.teachSkills,
-      learnSkills: Array.isArray(parsed.learnSkills)
-        ? parsed.learnSkills
-        : defaultProfile.learnSkills,
-      profilePicture: parsed.profilePicture || '',
-    };
-  } catch {
-    return { ...defaultProfile };
-  }
+function getToken() {
+  return localStorage.getItem('token');
 }
 
-// Resize uploaded images before saving them as browser storage data.
-function resizeImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+function getInitials(name = '') {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('') || 'U'
+  );
+}
 
-    reader.onerror = () => reject(new Error('Could not read this image.'));
-    reader.onload = () => {
-      const image = new Image();
+function normalizeSkills(skills) {
+  return Array.isArray(skills)
+    ? skills.filter((skill) => typeof skill === 'string')
+    : [];
+}
 
-      image.onerror = () => reject(new Error('Please select a valid image.'));
-      image.onload = () => {
-        const maxDimension = 400;
-        const scale = Math.min(
-          1,
-          maxDimension / Math.max(image.width, image.height),
-        );
-
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-
-        const context = canvas.getContext('2d');
-
-        if (!context) {
-          reject(new Error('Image processing is not supported.'));
-          return;
-        }
-
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-        // JPEG reduces the storage size of most photographs.
-        resolve(canvas.toDataURL('image/jpeg', 0.78));
-      };
-
-      image.src = reader.result;
-    };
-
-    reader.readAsDataURL(file);
-  });
+function mapApiProfile(data) {
+  return {
+    name: data.full_name || '',
+    title: data.title || '',
+    location: data.location || '',
+    bio: data.bio || '',
+    teachSkills: normalizeSkills(data.teach_skills),
+    learnSkills: normalizeSkills(data.learn_skills),
+    availability: data.availability || 'Flexible',
+    level: data.experience_level || 'Beginner',
+    profilePicture: data.profile_image || '',
+  };
 }
 
 function EditProfile() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  const [profile, setProfile] = useState(loadProfile);
+  const [profile, setProfile] = useState(emptyProfile);
   const [teachInput, setTeachInput] = useState('');
   const [learnInput, setLearnInput] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
+  const [apiError, setApiError] = useState('');
   const [pictureError, setPictureError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [isProcessingPicture, setIsProcessingPicture] = useState(false);
 
-  const initials =
-    profile.name
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join('') || 'U';
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadProfile() {
+      const token = getToken();
+
+      if (!token) {
+        setApiError('Your login session was not found. Please log in again.');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          signal: controller.signal,
+        });
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Could not load your profile.');
+        }
+
+        if (result.data) {
+          const loadedProfile = mapApiProfile(result.data);
+
+          setProfile(loadedProfile);
+
+          // Keep the existing Profile.jsx compatible with the saved data.
+          localStorage.setItem(
+            'swapSkillMyProfile',
+            JSON.stringify({
+              ...loadedProfile,
+              initials: getInitials(loadedProfile.name),
+              sessions: 0,
+              rating: 'New',
+            }),
+          );
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Load profile error:', error);
+          setApiError(
+            error.message ||
+              'Unable to connect to the server. Check that your backend is running.',
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadProfile();
+
+    return () => controller.abort();
+  }, []);
+
+  const initials = getInitials(profile.name);
 
   function updateField(event) {
     const { name, value } = event.target;
 
-    setProfile((current) => ({ ...current, [name]: value }));
+    setProfile((current) => ({
+      ...current,
+      [name]: value,
+    }));
+
     setSavedMessage('');
+    setApiError('');
+  }
+
+  function resizeImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(new Error('Could not read this image.'));
+
+      reader.onload = () => {
+        const image = new Image();
+
+        image.onerror = () => reject(new Error('Please select a valid image.'));
+
+        image.onload = () => {
+          const maxDimension = 400;
+          const scale = Math.min(
+            1,
+            maxDimension / Math.max(image.width, image.height),
+          );
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(image.width * scale));
+          canvas.height = Math.max(1, Math.round(image.height * scale));
+
+          const context = canvas.getContext('2d');
+
+          if (!context) {
+            reject(new Error('Image processing is not supported.'));
+            return;
+          }
+
+          context.drawImage(image, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.78));
+        };
+
+        image.src = reader.result;
+      };
+
+      reader.readAsDataURL(file);
+    });
   }
 
   async function handlePictureChange(event) {
     const file = event.target.files?.[0];
-
-    // Allow choosing the same image again after removing it.
     event.target.value = '';
 
     if (!file) return;
 
     setPictureError('');
     setSavedMessage('');
+    setApiError('');
 
     if (!file.type.startsWith('image/')) {
       setPictureError('Please select an image file.');
@@ -151,6 +227,7 @@ function EditProfile() {
 
     setPictureError('');
     setSavedMessage('');
+    setApiError('');
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -163,9 +240,7 @@ function EditProfile() {
     if (!skill) return;
 
     setProfile((current) => {
-      const existingSkills = Array.isArray(current[field])
-        ? current[field]
-        : [];
+      const existingSkills = current[field];
 
       if (
         existingSkills.some(
@@ -183,6 +258,7 @@ function EditProfile() {
 
     clearInput('');
     setSavedMessage('');
+    setApiError('');
   }
 
   function removeSkill(field, skill) {
@@ -192,26 +268,103 @@ function EditProfile() {
     }));
 
     setSavedMessage('');
+    setApiError('');
   }
 
-  function saveProfile(event) {
+  async function saveProfile(event) {
     event.preventDefault();
+
     setSavedMessage('');
+    setApiError('');
+    setPictureError('');
 
     if (isProcessingPicture) {
       setPictureError('Please wait until your picture finishes processing.');
       return;
     }
 
-    try {
-      localStorage.setItem('swapSkillMyProfile', JSON.stringify(profile));
-      setSavedMessage('Your profile changes have been saved.');
-      setPictureError('');
-    } catch {
-      setPictureError(
-        'Could not save your profile. Try a smaller picture or remove it.',
-      );
+    if (!profile.name.trim()) {
+      setApiError('Please enter your full name.');
+      return;
     }
+
+    const token = getToken();
+
+    if (!token) {
+      setApiError('Your login session was not found. Please log in again.');
+      return;
+    }
+
+    const payload = {
+      full_name: profile.name.trim(),
+      title: profile.title.trim(),
+      location: profile.location.trim(),
+      bio: profile.bio.trim(),
+      profile_image: profile.profilePicture,
+      teach_skills: profile.teachSkills,
+      learn_skills: profile.learnSkills,
+      experience_level: profile.level,
+      availability: profile.availability,
+    };
+
+    setIsSaving(true);
+
+    try {
+      const response = await fetch(API_URL, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Could not save your profile.');
+      }
+
+      const savedProfile = mapApiProfile(result.data || payload);
+
+      setProfile(savedProfile);
+
+      // Maintain compatibility with the current own-profile page.
+      localStorage.setItem(
+        'swapSkillMyProfile',
+        JSON.stringify({
+          ...savedProfile,
+          initials: getInitials(savedProfile.name),
+          sessions: 0,
+          rating: 'New',
+        }),
+      );
+
+      setSavedMessage('Your profile has been saved successfully.');
+    } catch (error) {
+      console.error('Save profile error:', error);
+
+      setApiError(
+        error.message ||
+          'Unable to connect to the server. Check that your backend is running.',
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="edit-profile-page">
+        <div className="edit-profile-heading">
+          <div>
+            <p className="edit-profile-eyebrow">YOUR ACCOUNT</p>
+            <h1>Edit Profile</h1>
+            <p>Loading your profile...</p>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -228,8 +381,13 @@ function EditProfile() {
         </Link>
       </div>
 
+      {apiError && (
+        <p className="edit-profile-error" role="alert">
+          {apiError}
+        </p>
+      )}
+
       <form className="edit-profile-form" onSubmit={saveProfile}>
-        {/* Profile picture */}
         <section className="edit-profile-card">
           <h2>Profile Picture</h2>
           <p className="edit-profile-description">
@@ -247,16 +405,14 @@ function EditProfile() {
 
             <div className="profile-picture-controls">
               <strong>{profile.name || 'Your profile'}</strong>
-              <p>
-                JPG, PNG, WebP, or another supported image format. Max 8 MB.
-              </p>
+              <p>Choose an image smaller than 8 MB.</p>
 
               <div className="profile-picture-actions">
                 <button
                   type="button"
                   className="profile-picture-upload"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessingPicture}
+                  disabled={isProcessingPicture || isSaving}
                 >
                   {isProcessingPicture ? 'Processing...' : 'Upload Picture'}
                 </button>
@@ -266,7 +422,7 @@ function EditProfile() {
                     type="button"
                     className="profile-picture-remove"
                     onClick={removePicture}
-                    disabled={isProcessingPicture}
+                    disabled={isProcessingPicture || isSaving}
                   >
                     Remove
                   </button>
@@ -290,7 +446,6 @@ function EditProfile() {
           </div>
         </section>
 
-        {/* Personal information */}
         <section className="edit-profile-card">
           <h2>Personal Information</h2>
           <p className="edit-profile-description">
@@ -305,6 +460,7 @@ function EditProfile() {
                 value={profile.name}
                 onChange={updateField}
                 required
+                maxLength={150}
               />
             </label>
 
@@ -315,6 +471,7 @@ function EditProfile() {
                 value={profile.title}
                 onChange={updateField}
                 placeholder="e.g. Frontend Developer"
+                maxLength={150}
               />
             </label>
 
@@ -325,6 +482,7 @@ function EditProfile() {
                 value={profile.location}
                 onChange={updateField}
                 placeholder="City, country"
+                maxLength={150}
               />
             </label>
 
@@ -350,7 +508,6 @@ function EditProfile() {
           </div>
         </section>
 
-        {/* Teaching skills */}
         <section className="edit-profile-card">
           <h2>Skills I Can Teach</h2>
           <p className="edit-profile-description">
@@ -394,7 +551,6 @@ function EditProfile() {
           </div>
         </section>
 
-        {/* Learning skills */}
         <section className="edit-profile-card">
           <h2>Skills I Want to Learn</h2>
           <p className="edit-profile-description">
@@ -438,7 +594,6 @@ function EditProfile() {
           </div>
         </section>
 
-        {/* Availability */}
         <section className="edit-profile-card">
           <h2>Availability</h2>
           <p className="edit-profile-description">
@@ -472,6 +627,7 @@ function EditProfile() {
             type="button"
             className="edit-profile-cancel"
             onClick={() => navigate('/dashboard')}
+            disabled={isSaving}
           >
             Cancel
           </button>
@@ -479,9 +635,9 @@ function EditProfile() {
           <button
             type="submit"
             className="edit-profile-save"
-            disabled={isProcessingPicture}
+            disabled={isProcessingPicture || isSaving}
           >
-            {isProcessingPicture ? 'Processing Picture...' : 'Save Changes'}
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </form>
