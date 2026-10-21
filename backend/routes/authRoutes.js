@@ -1,7 +1,13 @@
 const express = require('express');
 const pool = require('../config/db');
 
-const { register, login } = require('../controllers/authController');
+const {
+  register,
+  login,
+  changePassword,
+  forgotPassword,
+  resetPassword,
+} = require('../controllers/authController');
 
 const authMiddleware = require('../middleware/authMiddleware');
 
@@ -9,6 +15,8 @@ const router = express.Router();
 
 router.post('/register', register);
 router.post('/login', login);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // Protected route: requires a valid JWT
 router.get('/me', authMiddleware, async (req, res) => {
@@ -40,5 +48,8 @@ router.get('/me', authMiddleware, async (req, res) => {
     });
   }
 });
+
+// Protected route: change the logged-in user's password.
+router.patch('/change-password', authMiddleware, changePassword);
 
 module.exports = router;

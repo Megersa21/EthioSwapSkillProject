@@ -1,18 +1,56 @@
 const pool = require('../config/db');
 
+// Map notification types to the matching user preference.
+function getPreferenceColumn(type) {
+  const normalizedType = String(type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, '_');
+
+  const typeGroups = {
+    message_notifications: [
+      'message',
+      'new_message',
+      'message_received',
+      'chat_message',
+    ],
+    request_notifications: [
+      'request',
+      'swap_request',
+      'new_request',
+      'request_received',
+      'request_accepted',
+      'request_rejected',
+      'accepted',
+      'rejected',
+    ],
+    session_notifications: [
+      'session',
+      'session_scheduled',
+      'session_updated',
+      'session_cancelled',
+      'session_canceled',
+      'session_reminder',
+      'session_completed',
+    ],
+    review_notifications: ['review', 'new_review', 'review_received'],
+  };
+
+  for (const [column, types] of Object.entries(typeGroups)) {
+    if (types.includes(normalizedType)) {
+      return column;
+    }
+  }
+
+  // Unknown notification types remain enabled by default.
+  return null;
+}
+
 /**
  * Create a persistent notification and deliver it in real time.
  *
- * Required:
- *   userId  - the notification recipient
- *   actorId - the user who triggered the event (or null)
- *   type    - notification event type
- *   message - readable notification text
- *
- * Optional:
- *   relatedId - ID of the related request, session, or message
- *
- * Returns the saved notification.
+ * If the recipient disabled the matching notification preference,
+ * skip creating the notification. The underlying action still happens.
  */
 async function createNotification({
   userId,
@@ -35,6 +73,33 @@ async function createNotification({
     throw new Error('Notification message is required.');
   }
 
+  const preferenceColumn = getPreferenceColumn(type);
+
+  // Ensure a settings record exists for this recipient.
+  await pool.query(
+    `INSERT INTO public.user_settings (user_id)
+     VALUES ($1)
+     ON CONFLICT (user_id) DO NOTHING`,
+    [recipientId],
+  );
+
+  // Preference column names come only from the fixed mapping above.
+  if (preferenceColumn) {
+    const preferenceResult = await pool.query(
+      `SELECT ${preferenceColumn}
+       FROM public.user_settings
+       WHERE user_id = $1`,
+      [recipientId],
+    );
+
+    const preferenceEnabled =
+      preferenceResult.rows[0]?.[preferenceColumn] !== false;
+
+    if (!preferenceEnabled) {
+      return null;
+    }
+  }
+
   const result = await pool.query(
     `INSERT INTO public.notifications
        (user_id, actor_id, type, message, related_id)
@@ -52,8 +117,7 @@ async function createNotification({
 
   const notification = result.rows[0];
 
-  // Socket.IO is optional here so notifications can still be saved
-  // when the socket server is not available.
+  // Keep the existing real-time delivery and unread-count behavior.
   const io = global.notificationIO;
 
   if (io) {

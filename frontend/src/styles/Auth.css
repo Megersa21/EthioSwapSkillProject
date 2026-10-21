@@ -358,3 +358,17 @@
 .auth-forgot-bottom:hover {
   text-decoration: underline;
 }
+
+.reset-show-password {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.reset-show-password input {
+  width: 16px;
+  height: 16px;
+  accent-color: #6558d3;
+}

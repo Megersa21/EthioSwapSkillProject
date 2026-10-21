@@ -23,6 +23,8 @@ import MySkills from './pages/mySkill.jsx';
 import VideoCall from './pages/videoCall.jsx';
 import Help from './pages/Help.jsx';
 import Footer from './components/Footer.jsx';
+import Settings from './pages/Settings.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 
 import './App.css';
 
@@ -65,6 +67,8 @@ function App() {
         {/* Existing video-call page */}
         <Route path="/video-call/:sessionId" element={<VideoCall />} />
         <Route path="/help" element={<Help />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
     </BrowserRouter>
   );

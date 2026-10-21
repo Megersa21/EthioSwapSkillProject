@@ -561,6 +561,15 @@ function Navbar() {
                           </NavLink>
 
                           <NavLink
+                            to="/settings"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">⚙</span>
+                            Settings
+                          </NavLink>
+
+                          <NavLink
                             to="/requests"
                             onClick={closeMenus}
                             className="navbar-dropdown-link"
