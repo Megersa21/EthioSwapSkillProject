@@ -25,6 +25,9 @@ import Help from './pages/Help.jsx';
 import Footer from './components/Footer.jsx';
 import Settings from './pages/Settings.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
+import CommunityRules from './pages/CommunityRules.jsx';
+import Privacy from './pages/Privacy.jsx';
+import Contact from './pages/Contact.jsx';
 
 import './App.css';
 
@@ -69,6 +72,9 @@ function App() {
         <Route path="/help" element={<Help />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/community-rules" element={<CommunityRules />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/contact" element={<Contact />} />
       </Routes>
     </BrowserRouter>
   );

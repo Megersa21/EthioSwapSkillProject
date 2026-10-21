@@ -59,6 +59,7 @@ function Navbar() {
 
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileImageFailed, setProfileImageFailed] = useState(false);
   const [unreadCount, setUnreadCount] = useState(getUnreadCount);
 
   const displayName =
@@ -72,7 +73,11 @@ function Navbar() {
   const profileImage =
     profile?.profile_image || profile?.profileImage || profile?.avatar || '';
 
-  // Keep the navbar synchronized with login, logout, and route changes.
+  useEffect(() => {
+    setProfileImageFailed(false);
+  }, [profileImage]);
+
+  // Keep the navbar synchronized with login and logout.
   useEffect(() => {
     function syncLoginState() {
       const token = localStorage.getItem('token');
@@ -84,6 +89,7 @@ function Navbar() {
         setAdminCheckComplete(true);
         setProfile(null);
         setProfileLoading(false);
+        setProfileImageFailed(false);
         setUnreadCount(0);
         setAccountOpen(false);
         setMenuOpen(false);
@@ -112,6 +118,8 @@ function Navbar() {
         setIsAdmin(false);
         setAdminCheckComplete(true);
         setProfile(null);
+        setProfileLoading(false);
+        setProfileImageFailed(false);
         setUnreadCount(0);
       } else {
         setAdminCheckComplete(false);
@@ -220,7 +228,43 @@ function Navbar() {
     };
   }, [isLoggedIn, location.pathname]);
 
-  // Fetch the initial unread count from the database.
+  // Refresh the navbar immediately after a profile is saved.
+  useEffect(() => {
+    async function refreshProfile() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_URL}/profiles/me`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Could not refresh your profile.');
+        }
+
+        const result = await response.json();
+        const userProfile = getProfileFromResponse(result);
+
+        if (userProfile && typeof userProfile === 'object') {
+          setProfile(userProfile);
+        }
+      } catch (error) {
+        console.error('Could not refresh navbar profile:', error);
+      }
+    }
+
+    window.addEventListener('profileUpdated', refreshProfile);
+
+    return () => {
+      window.removeEventListener('profileUpdated', refreshProfile);
+    };
+  }, []);
+
+  // Fetch the initial unread notification count from the database.
   useEffect(() => {
     const token = localStorage.getItem('token');
     let cancelled = false;
@@ -267,7 +311,7 @@ function Navbar() {
     };
   }, [isLoggedIn, location.pathname]);
 
-  // Listen for live notification events on the existing shared socket.
+  // Listen for live notification events on the shared socket.
   useEffect(() => {
     if (!isLoggedIn || !localStorage.getItem('token')) {
       return undefined;
@@ -302,7 +346,6 @@ function Navbar() {
     }
 
     function handleNewNotification() {
-      // Use the database count so we do not double-count an event.
       refreshUnreadCount();
     }
 
@@ -313,7 +356,6 @@ function Navbar() {
       socket.connect();
     }
 
-    // Refresh the count after a reconnection in case events were missed.
     socket.on('connect', refreshUnreadCount);
 
     function handleNotificationCountUpdated() {
@@ -337,7 +379,7 @@ function Navbar() {
     };
   }, [isLoggedIn]);
 
-  // Keep the existing local notification update event supported.
+  // Keep existing local notification update events supported.
   useEffect(() => {
     function updateUnreadCount() {
       setUnreadCount(getUnreadCount());
@@ -371,6 +413,7 @@ function Navbar() {
     setAdminCheckComplete(true);
     setProfile(null);
     setProfileLoading(false);
+    setProfileImageFailed(false);
     setUnreadCount(0);
 
     closeMenus();
@@ -396,6 +439,25 @@ function Navbar() {
             { label: 'Dashboard', path: '/dashboard' },
             { label: '+ Add Skill', path: '/add-skill' },
           ];
+
+  function renderAvatar(large = false) {
+    const classes = large
+      ? 'navbar-avatar navbar-avatar-large'
+      : 'navbar-avatar';
+
+    if (profileImage && !profileImageFailed) {
+      return (
+        <img
+          src={profileImage}
+          alt={`${displayName}'s profile`}
+          className={`${classes} navbar-avatar-image`}
+          onError={() => setProfileImageFailed(true)}
+        />
+      );
+    }
+
+    return <span className={classes}>{initial}</span>;
+  }
 
   return (
     <header className="site-navbar">
@@ -461,6 +523,7 @@ function Navbar() {
                   <span className="navbar-bell" aria-hidden="true">
                     🔔
                   </span>
+
                   <span className="navbar-notification-label">
                     Notifications
                   </span>
@@ -482,18 +545,7 @@ function Navbar() {
                     aria-expanded={accountOpen}
                     aria-label="Open account menu"
                   >
-                    {profileImage ? (
-                      <img
-                        src={profileImage}
-                        alt={`${displayName}'s profile`}
-                        className="navbar-avatar navbar-avatar-image"
-                        onError={(event) => {
-                          event.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <span className="navbar-avatar">{initial}</span>
-                    )}
+                    {renderAvatar()}
 
                     <span className="navbar-account-name">
                       {profileLoading ? 'Loading...' : displayName}
@@ -507,17 +559,7 @@ function Navbar() {
                   {accountOpen && (
                     <div className="navbar-account-menu">
                       <div className="navbar-account-heading">
-                        {profileImage ? (
-                          <img
-                            src={profileImage}
-                            alt={`${displayName}'s profile`}
-                            className="navbar-avatar navbar-avatar-large navbar-avatar-image"
-                          />
-                        ) : (
-                          <span className="navbar-avatar navbar-avatar-large">
-                            {initial}
-                          </span>
-                        )}
+                        {renderAvatar(true)}
 
                         <span className="navbar-account-details">
                           <strong>{displayName}</strong>
@@ -531,7 +573,7 @@ function Navbar() {
 
                       <div className="navbar-menu-divider" />
 
-                      {isAdmin ? (
+                      {isAdmin && (
                         <NavLink
                           to="/admin"
                           onClick={closeMenus}
@@ -540,35 +582,51 @@ function Navbar() {
                           <span aria-hidden="true">▦</span>
                           Admin Dashboard
                         </NavLink>
+                      )}
+
+                      <NavLink
+                        to="/profile/me"
+                        onClick={closeMenus}
+                        className="navbar-dropdown-link"
+                      >
+                        <span aria-hidden="true">◉</span>
+                        My Profile
+                      </NavLink>
+
+                      <NavLink
+                        to="/edit-profile"
+                        onClick={closeMenus}
+                        className="navbar-dropdown-link"
+                      >
+                        <span aria-hidden="true">✎</span>
+                        Edit Profile
+                      </NavLink>
+
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeMenus();
+                            navigate('/admin?section=settings');
+                          }}
+                          className="navbar-dropdown-link navbar-dropdown-button"
+                        >
+                          <span aria-hidden="true">⚙</span>
+                          Settings
+                        </button>
                       ) : (
+                        <NavLink
+                          to="/settings"
+                          onClick={closeMenus}
+                          className="navbar-dropdown-link"
+                        >
+                          <span aria-hidden="true">⚙</span>
+                          Settings
+                        </NavLink>
+                      )}
+
+                      {!isAdmin && (
                         <>
-                          <NavLink
-                            to="/profile/me"
-                            onClick={closeMenus}
-                            className="navbar-dropdown-link"
-                          >
-                            <span aria-hidden="true">◉</span>
-                            My Profile
-                          </NavLink>
-
-                          <NavLink
-                            to="/edit-profile"
-                            onClick={closeMenus}
-                            className="navbar-dropdown-link"
-                          >
-                            <span aria-hidden="true">✎</span>
-                            Edit Profile
-                          </NavLink>
-
-                          <NavLink
-                            to="/settings"
-                            onClick={closeMenus}
-                            className="navbar-dropdown-link"
-                          >
-                            <span aria-hidden="true">⚙</span>
-                            Settings
-                          </NavLink>
-
                           <NavLink
                             to="/requests"
                             onClick={closeMenus}
@@ -626,6 +684,7 @@ function Navbar() {
                 <Link to="/login" className="navbar-login" onClick={closeMenus}>
                   Log in
                 </Link>
+
                 <Link
                   to="/register"
                   className="navbar-register"

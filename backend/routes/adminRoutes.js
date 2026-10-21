@@ -12,6 +12,12 @@ const {
   updateUserRole,
 } = require('../controllers/adminController');
 
+const {
+  getContactMessages,
+  markContactMessageRead,
+  resolveContactMessage,
+} = require('../controllers/adminContactController');
+
 const router = express.Router();
 
 // All admin endpoints require authentication and admin privileges.
@@ -38,5 +44,11 @@ router.get('/reports', getReports);
 router.patch('/reports/:id', updateReport);
 
 router.get('/audit-logs', getAuditLogs);
+router.use(authMiddleware, adminMiddleware);
+
+// Admin-only Contact Us inbox.
+router.get('/contact-messages', getContactMessages);
+router.patch('/contact-messages/:id/read', markContactMessageRead);
+router.patch('/contact-messages/:id/resolve', resolveContactMessage);
 
 module.exports = router;

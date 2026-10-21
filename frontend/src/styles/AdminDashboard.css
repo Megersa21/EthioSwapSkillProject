@@ -737,3 +737,45 @@
     max-width: 200px;
   }
 }
+
+/* =========================================
+   Contact Messages — Status Filter Dropdown
+========================================= */
+
+.admin-panel-heading select[aria-label='Filter contact messages by status'] {
+  background-color: #172554;
+  color: #ffffff;
+  border: 1px solid #3b82f6;
+  border-radius: 10px;
+  padding: 10px 38px 10px 14px;
+  min-width: 160px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.admin-panel-heading
+  select[aria-label='Filter contact messages by status']:hover {
+  background-color: #1e3a8a;
+  border-color: #60a5fa;
+}
+
+.admin-panel-heading
+  select[aria-label='Filter contact messages by status']:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+/* Dropdown options */
+.admin-panel-heading
+  select[aria-label='Filter contact messages by status']
+  option {
+  background-color: #172554;
+  color: #ffffff;
+  padding: 10px;
+}

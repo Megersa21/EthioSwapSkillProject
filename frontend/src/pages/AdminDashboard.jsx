@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import AdminSettings from './AdminSettings';
 import '../styles/AdminDashboard.css';
 
@@ -50,13 +51,25 @@ async function adminFetch(path, options = {}) {
 
 function statusClass(status) {
   if (status === 'active') return 'status-active';
-  if (status === 'resolved' || status === 'reviewed') return 'status-reviewed';
-  if (status === 'suspended' || status === 'pending') return 'status-pending';
+
+  if (status === 'resolved' || status === 'reviewed' || status === 'read') {
+    return 'status-reviewed';
+  }
+
+  if (status === 'suspended' || status === 'pending' || status === 'new') {
+    return 'status-pending';
+  }
+
   return 'status-rejected';
 }
 
 function AdminDashboard() {
-  const [activePage, setActivePage] = useState('Dashboard');
+  const location = useLocation();
+
+  const [activePage, setActivePage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('section') === 'settings' ? 'Settings' : 'Dashboard';
+  });
 
   const [currentRole, setCurrentRole] = useState('');
   const [stats, setStats] = useState(null);
@@ -64,11 +77,15 @@ function AdminDashboard() {
   const [reports, setReports] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [administrators, setAdministrators] = useState([]);
-
+  const [contactMessages, setContactMessages] = useState([]);
+  const [contactStatusFilter, setContactStatusFilter] = useState('all');
+  const [contactLoading, setContactLoading] = useState(false);
+  const [updatingContactId, setUpdatingContactId] = useState(null);
   const [userSearch, setUserSearch] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
   const [reportSearch, setReportSearch] = useState('');
   const [reportFilter, setReportFilter] = useState('all');
+  const [selectedContact, setSelectedContact] = useState(null);
 
   const [adminForm, setAdminForm] = useState({
     full_name: '',
@@ -89,6 +106,20 @@ function AdminDashboard() {
 
   const isSuperAdmin = currentRole === 'super_admin';
 
+  // Keep the dashboard section synchronized with the URL.
+  // This lets the account dropdown open the existing Settings component.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+
+    if (params.get('section') === 'settings') {
+      setActivePage('Settings');
+    } else {
+      setActivePage((current) =>
+        current === 'Settings' ? 'Dashboard' : current,
+      );
+    }
+  }, [location.search]);
+
   const loadAdminData = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -101,7 +132,6 @@ function AdminDashboard() {
       ]);
 
       setCurrentRole(verifyResult.admin?.role || '');
-
       setStats(statsResult.data ?? statsResult.stats ?? null);
       setUsers(getArray(usersResult));
     } catch (err) {
@@ -141,6 +171,30 @@ function AdminDashboard() {
       setAuditLoading(false);
     }
   }, []);
+
+  const loadContactMessages = useCallback(async () => {
+    setContactLoading(true);
+    setError('');
+
+    try {
+      const result = await adminFetch(
+        `/admin/contact-messages?status=${encodeURIComponent(contactStatusFilter)}`,
+      );
+
+      setContactMessages(getArray(result));
+    } catch (err) {
+      console.error('Could not load contact messages:', err);
+      setError(err.message || 'Could not load contact messages.');
+    } finally {
+      setContactLoading(false);
+    }
+  }, [contactStatusFilter]);
+
+  useEffect(() => {
+    if (activePage === 'Contact Messages') {
+      loadContactMessages();
+    }
+  }, [activePage, loadContactMessages]);
 
   const loadAdministrators = useCallback(async () => {
     if (currentRole !== 'super_admin') return;
@@ -234,6 +288,11 @@ function AdminDashboard() {
     setActivePage(page);
     setNotice('');
     setError('');
+
+    // Remove the Settings query parameter when navigating to another section.
+    if (page !== 'Settings' && location.search) {
+      window.history.replaceState({}, '', '/admin');
+    }
   }
 
   function findAccount(event) {
@@ -521,7 +580,11 @@ function AdminDashboard() {
                     <td>{user.email}</td>
                     <td>
                       <span
-                        className={`admin-status ${statusClass(user.role === 'admin' || user.role === 'super_admin' ? 'reviewed' : 'active')}`}
+                        className={`admin-status ${statusClass(
+                          user.role === 'admin' || user.role === 'super_admin'
+                            ? 'reviewed'
+                            : 'active',
+                        )}`}
                       >
                         {user.role || 'user'}
                       </span>
@@ -612,7 +675,9 @@ function AdminDashboard() {
                       <td>{user.email}</td>
                       <td>
                         <span
-                          className={`admin-status ${statusClass(user.role === 'user' ? 'active' : 'reviewed')}`}
+                          className={`admin-status ${statusClass(
+                            user.role === 'user' ? 'active' : 'reviewed',
+                          )}`}
                         >
                           {user.role || 'user'}
                         </span>
@@ -844,7 +909,9 @@ function AdminDashboard() {
                           <td>{admin.role}</td>
                           <td>
                             <span
-                              className={`admin-status ${statusClass(admin.account_status || 'active')}`}
+                              className={`admin-status ${statusClass(
+                                admin.account_status || 'active',
+                              )}`}
                             >
                               {admin.account_status || 'active'}
                             </span>
@@ -1094,6 +1161,424 @@ function AdminDashboard() {
     );
   }
 
+  async function updateContactStatus(contact, nextStatus) {
+    if (!contact?.id) {
+      setError('Invalid contact message.');
+      return;
+    }
+
+    if (!['read', 'resolved'].includes(nextStatus)) {
+      setError('Invalid contact message status.');
+      return;
+    }
+
+    setUpdatingContactId(contact.id);
+    setError('');
+    setNotice('');
+
+    try {
+      const action = nextStatus === 'read' ? 'read' : 'resolve';
+
+      const result = await adminFetch(
+        `/admin/contact-messages/${contact.id}/${action}`,
+        { method: 'PATCH' },
+      );
+
+      setContactMessages((current) =>
+        current.map((item) =>
+          String(item.id) === String(contact.id)
+            ? {
+                ...item,
+                ...(result.data || {}),
+                status: nextStatus,
+              }
+            : item,
+        ),
+      );
+
+      setNotice(
+        result.message ||
+          (nextStatus === 'read'
+            ? 'Message marked as read.'
+            : 'Message resolved successfully.'),
+      );
+
+      // Refresh the current filter after the update.
+      await loadContactMessages();
+    } catch (err) {
+      console.error('Could not update contact message:', err);
+      setError(err.message || 'Could not update this contact message.');
+    } finally {
+      setUpdatingContactId(null);
+    }
+  }
+
+  function renderContactMessages() {
+    const newCount = contactMessages.filter(
+      (message) => message.status === 'new',
+    ).length;
+
+    const selectedMessage = selectedContact
+      ? contactMessages.find(
+          (message) => String(message.id) === String(selectedContact.id),
+        ) || selectedContact
+      : null;
+
+    return (
+      <>
+        <div className="admin-page-heading-row">
+          <div>
+            <h1 className="admin-page-title">Contact Messages</h1>
+            <p className="admin-page-description">
+              Read messages from the EthioSwapSkill Contact Us page and respond
+              to users.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="admin-button admin-button-review"
+            onClick={loadContactMessages}
+            disabled={contactLoading}
+          >
+            {contactLoading ? 'Refreshing...' : 'Refresh messages'}
+          </button>
+        </div>
+
+        <section className="admin-stats-grid">
+          <article className="admin-stat-card">
+            <strong>{contactMessages.length}</strong>
+            <span>Messages displayed</span>
+          </article>
+
+          <article className="admin-stat-card">
+            <strong>{newCount}</strong>
+            <span>New messages displayed</span>
+          </article>
+        </section>
+
+        <section className="admin-panel">
+          <div className="admin-panel-heading">
+            <h2>Inbox</h2>
+
+            <select
+              value={contactStatusFilter}
+              onChange={(event) => {
+                setContactStatusFilter(event.target.value);
+                setSelectedContact(null);
+              }}
+              aria-label="Filter contact messages by status"
+            >
+              <option value="all">All messages</option>
+              <option value="new">New</option>
+              <option value="read">Read</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+
+          {contactLoading && <p>Loading contact messages...</p>}
+
+          {!contactLoading && contactMessages.length === 0 && (
+            <p className="admin-no-results">
+              No messages found for this filter.
+            </p>
+          )}
+
+          {!contactLoading && contactMessages.length > 0 && (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Sender</th>
+                    <th>Topic</th>
+                    <th>Message</th>
+                    <th>Received</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {contactMessages.map((contact) => {
+                    const updating =
+                      String(updatingContactId) === String(contact.id);
+
+                    return (
+                      <tr key={contact.id}>
+                        <td className="admin-report-name">
+                          {contact.name}
+                          <a
+                            href={`mailto:${contact.email}`}
+                            style={{
+                              display: 'block',
+                              marginTop: 5,
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {contact.email}
+                          </a>
+                        </td>
+
+                        <td>{contact.topic}</td>
+
+                        <td>
+                          <div
+                            style={{
+                              minWidth: 180,
+                              maxWidth: 300,
+                              whiteSpace: 'pre-wrap',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {contact.message.length > 100
+                              ? `${contact.message.slice(0, 100)}...`
+                              : contact.message}
+                          </div>
+                        </td>
+
+                        <td>{formatDate(contact.created_at)}</td>
+
+                        <td>
+                          <span
+                            className={`admin-status ${statusClass(
+                              contact.status,
+                            )}`}
+                          >
+                            {contact.status}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: 6,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="admin-button admin-button-review"
+                              onClick={() => setSelectedContact(contact)}
+                            >
+                              View details
+                            </button>
+
+                            {contact.status === 'new' && (
+                              <button
+                                type="button"
+                                className="admin-button admin-button-review"
+                                disabled={updating}
+                                onClick={() =>
+                                  updateContactStatus(contact, 'read')
+                                }
+                              >
+                                {updating ? 'Saving...' : 'Mark read'}
+                              </button>
+                            )}
+
+                            {contact.status !== 'resolved' && (
+                              <button
+                                type="button"
+                                className="admin-button"
+                                disabled={updating}
+                                onClick={() =>
+                                  updateContactStatus(contact, 'resolved')
+                                }
+                              >
+                                {updating ? 'Saving...' : 'Resolve'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {selectedMessage && (
+          <div
+            role="presentation"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                setSelectedContact(null);
+              }
+            }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'rgba(8, 15, 30, 0.72)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+              overflowY: 'auto',
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="contact-details-title"
+              className="admin-panel"
+              style={{
+                width: '100%',
+                maxWidth: 650,
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                margin: 'auto',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              }}
+            >
+              <div className="admin-panel-heading">
+                <h2 id="contact-details-title">Message details</h2>
+
+                <button
+                  type="button"
+                  className="admin-button"
+                  onClick={() => setSelectedContact(null)}
+                  aria-label="Close message details"
+                >
+                  Close ×
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div>
+                  <strong>From</strong>
+                  <p style={{ margin: '5px 0' }}>{selectedMessage.name}</p>
+                  <a
+                    href={`mailto:${selectedMessage.email}`}
+                    style={{ overflowWrap: 'anywhere' }}
+                  >
+                    {selectedMessage.email}
+                  </a>
+                </div>
+
+                <div>
+                  <strong>Topic</strong>
+                  <p style={{ margin: '5px 0' }}>{selectedMessage.topic}</p>
+                </div>
+
+                <div>
+                  <strong>Received</strong>
+                  <p style={{ margin: '5px 0' }}>
+                    {formatDate(selectedMessage.created_at)}
+                  </p>
+                </div>
+
+                <div>
+                  <strong>Status</strong>
+                  <p>
+                    <span
+                      className={`admin-status ${statusClass(
+                        selectedMessage.status,
+                      )}`}
+                    >
+                      {selectedMessage.status}
+                    </span>
+                  </p>
+                </div>
+
+                <div>
+                  <strong>Full message</strong>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: 16,
+                      borderRadius: 10,
+                      border: '1px solid var(--admin-border, #d8dee9)',
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'anywhere',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {selectedMessage.message}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    marginTop: 8,
+                  }}
+                >
+                  <a
+                    className="admin-button admin-button-review"
+                    href={`mailto:${selectedMessage.email}?subject=${encodeURIComponent(
+                      `Re: ${selectedMessage.topic}`,
+                    )}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    Reply by email
+                  </a>
+
+                  {selectedMessage.status === 'new' && (
+                    <button
+                      type="button"
+                      className="admin-button admin-button-review"
+                      disabled={
+                        String(updatingContactId) === String(selectedMessage.id)
+                      }
+                      onClick={async () => {
+                        await updateContactStatus(selectedMessage, 'read');
+                        setSelectedContact((current) =>
+                          current &&
+                          String(current.id) === String(selectedMessage.id)
+                            ? { ...current, status: 'read' }
+                            : current,
+                        );
+                      }}
+                    >
+                      Mark as read
+                    </button>
+                  )}
+
+                  {selectedMessage.status !== 'resolved' && (
+                    <button
+                      type="button"
+                      className="admin-button"
+                      disabled={
+                        String(updatingContactId) === String(selectedMessage.id)
+                      }
+                      onClick={async () => {
+                        await updateContactStatus(selectedMessage, 'resolved');
+                        setSelectedContact((current) =>
+                          current &&
+                          String(current.id) === String(selectedMessage.id)
+                            ? { ...current, status: 'resolved' }
+                            : current,
+                        );
+                      }}
+                    >
+                      Resolve message
+                    </button>
+                  )}
+                </div>
+
+                <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 0 }}>
+                  Reply by email opens your configured email application. You
+                  can review and send the reply there.
+                </p>
+              </div>
+            </section>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="admin-layout">
       <aside className="admin-sidebar">
@@ -1109,14 +1594,16 @@ function AdminDashboard() {
             { name: 'Dashboard', icon: '▦' },
             { name: 'Users', icon: '♙' },
             { name: 'Reports', icon: '⚑' },
+            { name: 'Contact Messages', icon: '✉' },
             { name: 'Audit log', icon: '◷' },
             ...(isSuperAdmin ? [{ name: 'Administrators', icon: '♜' }] : []),
-            { name: 'Settings', icon: '⚙' },
           ].map((item) => (
             <button
               key={item.name}
               type="button"
-              className={`admin-nav-item ${activePage === item.name ? 'active' : ''}`}
+              className={`admin-nav-item ${
+                activePage === item.name ? 'active' : ''
+              }`}
               onClick={() => navigate(item.name)}
             >
               <span>{item.icon}</span>
@@ -1163,6 +1650,7 @@ function AdminDashboard() {
         {activePage === 'Dashboard' && renderDashboard()}
         {activePage === 'Users' && renderUsers()}
         {activePage === 'Reports' && renderReports()}
+        {activePage === 'Contact Messages' && renderContactMessages()}
         {activePage === 'Audit log' && renderAuditLog()}
         {activePage === 'Administrators' && renderAdministrators()}
         {activePage === 'Settings' && <AdminSettings />}

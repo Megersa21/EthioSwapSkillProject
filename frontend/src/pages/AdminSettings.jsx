@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '../styles/AdminSettings.css';
 
 const STORAGE_KEY = 'ethioSwapSkillAdminPreferences';
@@ -24,6 +25,8 @@ function readSettings() {
 }
 
 export default function AdminSettings() {
+  const navigate = useNavigate();
+
   const [settings, setSettings] = useState(readSettings);
   const [message, setMessage] = useState('');
 
@@ -67,45 +70,6 @@ export default function AdminSettings() {
       </header>
 
       <form onSubmit={saveSettings}>
-        <section className="admin-settings-card">
-          <div className="admin-settings-section-heading">
-            <span className="admin-settings-icon">⚙</span>
-            <div>
-              <h2>Platform information</h2>
-              <p>Basic information displayed in your admin preferences.</p>
-            </div>
-          </div>
-
-          <div className="admin-settings-field">
-            <label htmlFor="platformName">Platform name</label>
-            <input
-              id="platformName"
-              name="platformName"
-              value={settings.platformName}
-              onChange={updateField}
-              required
-              maxLength={100}
-            />
-          </div>
-
-          <div className="admin-settings-field">
-            <label htmlFor="supportEmail">Support email</label>
-            <input
-              id="supportEmail"
-              name="supportEmail"
-              type="email"
-              value={settings.supportEmail}
-              onChange={updateField}
-              placeholder="support@example.com"
-              maxLength={254}
-            />
-            <small>
-              This is a saved preference only; it does not configure email
-              delivery.
-            </small>
-          </div>
-        </section>
-
         <section className="admin-settings-card">
           <div className="admin-settings-section-heading">
             <span className="admin-settings-icon">♧</span>
