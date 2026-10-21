@@ -627,3 +627,8 @@
     max-width: 88%;
   }
 }
+.conversation-avatar-image {
+  object-fit: cover;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

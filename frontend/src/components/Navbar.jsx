@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
+import socket from '../socket';
 import '../styles/Navbar.css';
 
 const API_URL = 'http://localhost:5000/api';
@@ -100,7 +101,7 @@ function Navbar() {
     };
   }, [location.pathname]);
 
-  // Recheck login state immediately when the login component announces a change.
+  // Recheck login state when authentication changes.
   useEffect(() => {
     function handleAuthChanged() {
       const token = localStorage.getItem('token');
@@ -219,7 +220,7 @@ function Navbar() {
     };
   }, [isLoggedIn, location.pathname]);
 
-  // Fetch the unread notification count from the backend.
+  // Fetch the initial unread count from the database.
   useEffect(() => {
     const token = localStorage.getItem('token');
     let cancelled = false;
@@ -266,6 +267,76 @@ function Navbar() {
     };
   }, [isLoggedIn, location.pathname]);
 
+  // Listen for live notification events on the existing shared socket.
+  useEffect(() => {
+    if (!isLoggedIn || !localStorage.getItem('token')) {
+      return undefined;
+    }
+
+    function handleUnreadCount(count) {
+      const parsedCount = Number(count);
+
+      if (Number.isFinite(parsedCount) && parsedCount >= 0) {
+        setUnreadCount(parsedCount);
+      }
+    }
+
+    async function refreshUnreadCount() {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${API_URL}/notifications/unread-count`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json();
+        handleUnreadCount(data.unread_count ?? 0);
+      } catch (error) {
+        console.error('Could not refresh notification count:', error);
+      }
+    }
+
+    function handleNewNotification() {
+      // Use the database count so we do not double-count an event.
+      refreshUnreadCount();
+    }
+
+    socket.on('notification:unread-count', handleUnreadCount);
+    socket.on('notification:new', handleNewNotification);
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    // Refresh the count after a reconnection in case events were missed.
+    socket.on('connect', refreshUnreadCount);
+
+    function handleNotificationCountUpdated() {
+      refreshUnreadCount();
+    }
+
+    window.addEventListener(
+      'notificationCountUpdated',
+      handleNotificationCountUpdated,
+    );
+
+    return () => {
+      socket.off('notification:unread-count', handleUnreadCount);
+      socket.off('notification:new', handleNewNotification);
+      socket.off('connect', refreshUnreadCount);
+
+      window.removeEventListener(
+        'notificationCountUpdated',
+        handleNotificationCountUpdated,
+      );
+    };
+  }, [isLoggedIn]);
+
   // Keep the existing local notification update event supported.
   useEffect(() => {
     function updateUnreadCount() {
@@ -304,13 +375,11 @@ function Navbar() {
 
     closeMenus();
 
-    // Notify other components that the user has logged out.
     window.dispatchEvent(new Event('authChanged'));
 
     navigate('/login', { replace: true });
   }
 
-  // Wait for admin verification before showing role-specific links.
   const mainLinks = !isLoggedIn
     ? [
         { label: 'Home', path: '/' },
@@ -335,7 +404,6 @@ function Navbar() {
           <span className="navbar-brand-icon" aria-hidden="true">
             ⇄
           </span>
-
           <span className="navbar-brand-text">
             Ethio<span>SwapSkill</span>
           </span>
@@ -393,7 +461,6 @@ function Navbar() {
                   <span className="navbar-bell" aria-hidden="true">
                     🔔
                   </span>
-
                   <span className="navbar-notification-label">
                     Notifications
                   </span>
@@ -550,7 +617,6 @@ function Navbar() {
                 <Link to="/login" className="navbar-login" onClick={closeMenus}>
                   Log in
                 </Link>
-
                 <Link
                   to="/register"
                   className="navbar-register"
