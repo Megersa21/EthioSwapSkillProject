@@ -35,6 +35,86 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+// Normalize a skill name so "JavaScript" and "javascript"
+// are treated as the same skill.
+function normalizeSkillName(name) {
+  return typeof name === 'string' ? name.trim().toLowerCase() : '';
+}
+
+// Load profile skills and database skill listings together.
+// Database records take priority because they have real IDs.
+function combineSkills(profile, databaseSkills) {
+  const combined = [];
+  const seen = new Set();
+
+  const addSkill = (skill) => {
+    const name = normalizeSkillName(skill.skill_name);
+    const type = skill.skill_type;
+
+    if (!name || !['teach', 'learn'].includes(type)) {
+      return;
+    }
+
+    const key = `${type}:${name}`;
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    combined.push(skill);
+  };
+
+  // Database skills are added first so their real IDs are preserved.
+  databaseSkills.forEach((skill) => {
+    addSkill({
+      ...skill,
+      isDatabaseSkill: true,
+    });
+  });
+
+  // Add skills saved in the user's profile that aren't already listed.
+  const profileSkillTypes = [
+    {
+      field: 'teach_skills',
+      type: 'teach',
+    },
+    {
+      field: 'learn_skills',
+      type: 'learn',
+    },
+  ];
+
+  profileSkillTypes.forEach(({ field, type }) => {
+    const names = Array.isArray(profile?.[field]) ? profile[field] : [];
+
+    names.forEach((name, index) => {
+      if (typeof name !== 'string' || !name.trim()) {
+        return;
+      }
+
+      const normalizedName = normalizeSkillName(name);
+      const key = `${type}:${normalizedName}`;
+
+      if (seen.has(key)) {
+        return;
+      }
+
+      addSkill({
+        id: `profile-${type}-${index}-${normalizedName}`,
+        skill_name: name.trim(),
+        skill_type: type,
+        description: '',
+        proficiency_level:
+          type === 'teach' ? profile?.experience_level || null : null,
+        isDatabaseSkill: false,
+      });
+    });
+  });
+
+  return combined;
+}
+
 export default function MySkills() {
   const [skills, setSkills] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,10 +129,41 @@ export default function MySkills() {
   const loadSkills = useCallback(async () => {
     setLoading(true);
     setError('');
+    setSuccess('');
 
     try {
-      const data = await apiRequest('/skills/my-skills');
-      setSkills(Array.isArray(data.skills) ? data.skills : []);
+      // One endpoint returns database skill records; the other
+      // returns teach_skills and learn_skills stored in the profile.
+      const [skillsResult, profileResult] = await Promise.allSettled([
+        apiRequest('/skills/my-skills'),
+        apiRequest('/profiles/me'),
+      ]);
+
+      const databaseSkills =
+        skillsResult.status === 'fulfilled' &&
+        Array.isArray(skillsResult.value.skills)
+          ? skillsResult.value.skills
+          : [];
+
+      const profile =
+        profileResult.status === 'fulfilled'
+          ? profileResult.value.data || {}
+          : null;
+
+      setSkills(combineSkills(profile, databaseSkills));
+
+      if (skillsResult.status === 'rejected') {
+        setError(
+          skillsResult.reason?.message ||
+            'Could not load database skill listings.',
+        );
+      } else if (profileResult.status === 'rejected') {
+        setError(
+          `Your saved skill listings loaded, but profile skills could not be loaded: ${
+            profileResult.reason?.message || 'Please try again.'
+          }`,
+        );
+      }
     } catch (err) {
       setError(err.message || 'Could not load your skills.');
     } finally {
@@ -76,6 +187,13 @@ export default function MySkills() {
         : skills;
 
   const startEditing = (skill) => {
+    if (!skill.isDatabaseSkill) {
+      setError(
+        'This skill is saved only in your profile. Add it through the Add Skill page to manage it here.',
+      );
+      return;
+    }
+
     setEditingSkill(skill);
     setForm({
       skill_name: skill.skill_name || '',
@@ -104,7 +222,9 @@ export default function MySkills() {
   const handleSave = async (event) => {
     event.preventDefault();
 
-    if (!editingSkill) return;
+    if (!editingSkill || !editingSkill.isDatabaseSkill) {
+      return;
+    }
 
     if (!form.skill_name.trim()) {
       setError('Please enter a skill name.');
@@ -130,11 +250,18 @@ export default function MySkills() {
       });
 
       if (data.skill) {
-        setSkills((current) =>
-          current.map((skill) =>
-            String(skill.id) === String(editingSkill.id) ? data.skill : skill,
-          ),
-        );
+        setSkills((current) => {
+          const updatedSkills = current.map((skill) =>
+            skill.isDatabaseSkill &&
+            String(skill.id) === String(editingSkill.id)
+              ? { ...data.skill, isDatabaseSkill: true }
+              : skill,
+          );
+
+          // Recombine using the profile source to avoid duplicate
+          // skill names after editing a database skill.
+          return updatedSkills;
+        });
       } else {
         await loadSkills();
       }
@@ -150,6 +277,13 @@ export default function MySkills() {
   };
 
   const handleDelete = async (skill) => {
+    if (!skill.isDatabaseSkill) {
+      setError(
+        'This skill is saved only in your profile and cannot be deleted through the skill listings.',
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
       `Are you sure you want to delete "${skill.skill_name}"?`,
     );
@@ -166,14 +300,17 @@ export default function MySkills() {
       });
 
       setSkills((current) =>
-        current.filter((item) => String(item.id) !== String(skill.id)),
+        current.filter(
+          (item) =>
+            !(item.isDatabaseSkill && String(item.id) === String(skill.id)),
+        ),
       );
 
       if (editingSkill && String(editingSkill.id) === String(skill.id)) {
         cancelEditing();
       }
 
-      setSuccess('Skill deleted successfully.');
+      setSuccess('Skill listing deleted successfully.');
     } catch (err) {
       setError(err.message || 'Could not delete this skill.');
     } finally {
@@ -266,7 +403,10 @@ export default function MySkills() {
       ) : (
         <section className="my-skills-grid">
           {visibleSkills.map((skill) => (
-            <article className="my-skill-card" key={skill.id}>
+            <article
+              className="my-skill-card"
+              key={`${skill.isDatabaseSkill ? 'database' : 'profile'}-${skill.id}`}
+            >
               <div className="my-skill-card-top">
                 <span
                   className={`my-skill-type ${
@@ -289,11 +429,24 @@ export default function MySkills() {
                 {skill.description || 'No description added yet.'}
               </p>
 
+              {!skill.isDatabaseSkill && (
+                <p className="my-skill-description">
+                  Saved in your profile. Add this skill through the Add Skill
+                  page if you want to edit or delete its listing here.
+                </p>
+              )}
+
               <div className="my-skill-actions">
                 <button
                   type="button"
                   className="my-skill-edit"
                   onClick={() => startEditing(skill)}
+                  disabled={!skill.isDatabaseSkill}
+                  title={
+                    skill.isDatabaseSkill
+                      ? 'Edit skill'
+                      : 'This skill is stored only in your profile'
+                  }
                 >
                   Edit
                 </button>
@@ -302,7 +455,12 @@ export default function MySkills() {
                   type="button"
                   className="my-skill-delete"
                   onClick={() => handleDelete(skill)}
-                  disabled={deletingId !== null}
+                  disabled={deletingId !== null || !skill.isDatabaseSkill}
+                  title={
+                    skill.isDatabaseSkill
+                      ? 'Delete skill listing'
+                      : 'This skill is stored only in your profile'
+                  }
                 >
                   {String(deletingId) === String(skill.id)
                     ? 'Deleting...'

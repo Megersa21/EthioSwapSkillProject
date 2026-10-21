@@ -6,10 +6,10 @@ function adminMiddleware(req, res, next) {
     });
   }
 
-  if (req.user.role !== 'admin') {
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
     return res.status(403).json({
       status: 'error',
-      message: 'Access denied. Admin privileges are required.',
+      message: 'Access denied. Administrator privileges are required.',
     });
   }
 

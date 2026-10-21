@@ -1,5 +1,8 @@
 const pool = require('../config/db');
 
+// ------------------------------------------
+// GET ADMIN DASHBOARD STATISTICS
+// ------------------------------------------
 async function getStats(req, res) {
   try {
     const [
@@ -43,6 +46,7 @@ async function getStats(req, res) {
     });
   } catch (error) {
     console.error('Admin stats error:', error.message);
+
     return res.status(500).json({
       status: 'error',
       message: 'Failed to load admin statistics.',
@@ -50,13 +54,24 @@ async function getStats(req, res) {
   }
 }
 
+// ------------------------------------------
+// GET ALL USERS
+// ------------------------------------------
 async function getUsers(req, res) {
   try {
     const result = await pool.query(`
-      SELECT id, full_name, email, role, created_at,
-             updated_at, location, title
-      FROM users
-      ORDER BY created_at DESC NULLS LAST, id DESC
+      SELECT
+        id,
+        full_name,
+        email,
+        role,
+        account_status,
+        created_at,
+        updated_at,
+        location,
+        title
+      FROM public.users
+      ORDER BY created_at DESC
     `);
 
     return res.json({
@@ -66,6 +81,7 @@ async function getUsers(req, res) {
     });
   } catch (error) {
     console.error('Admin users error:', error.message);
+
     return res.status(500).json({
       status: 'error',
       message: 'Failed to load users.',
@@ -73,6 +89,272 @@ async function getUsers(req, res) {
   }
 }
 
+// ------------------------------------------
+// SUSPEND OR REACTIVATE A USER
+// PATCH /api/admin/users/:id/status
+// ------------------------------------------
+async function updateUserStatus(req, res) {
+  const userId = req.params.id;
+
+  // Support either field name from the frontend.
+  const requestedStatus = req.body.account_status ?? req.body.status;
+
+  const allowedStatuses = ['active', 'suspended'];
+
+  if (!userId || !/^\d+$/.test(String(userId)) || Number(userId) < 1) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid user ID.',
+    });
+  }
+
+  if (!allowedStatuses.includes(requestedStatus)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Status must be active or suspended.',
+    });
+  }
+
+  // An administrator cannot suspend their own account.
+  if (String(req.user.userId) === String(userId)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'You cannot change your own account status.',
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const targetResult = await client.query(
+      `SELECT id, full_name, email, role, account_status
+       FROM public.users
+       WHERE id = $1
+       FOR UPDATE`,
+      [userId],
+    );
+
+    if (targetResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found.',
+      });
+    }
+
+    const target = targetResult.rows[0];
+
+    // Protect super administrator accounts from suspension.
+    if (target.role === 'super_admin') {
+      await client.query('ROLLBACK');
+
+      return res.status(403).json({
+        status: 'error',
+        message: 'A super administrator account cannot be suspended here.',
+      });
+    }
+
+    const updated = await client.query(
+      `UPDATE public.users
+       SET account_status = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING
+         id,
+         full_name,
+         email,
+         role,
+         account_status,
+         created_at,
+         updated_at,
+         location,
+         title`,
+      [requestedStatus, userId],
+    );
+
+    await client.query(
+      `INSERT INTO audit_logs
+         (admin_id, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        req.user.userId,
+        requestedStatus === 'suspended' ? 'user_suspended' : 'user_reactivated',
+        'user',
+        userId,
+        JSON.stringify({
+          previousStatus: target.account_status,
+          newStatus: requestedStatus,
+          targetEmail: target.email,
+        }),
+      ],
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      status: 'success',
+      message:
+        requestedStatus === 'suspended'
+          ? 'User suspended successfully.'
+          : 'User reactivated successfully.',
+      user: updated.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Update user status error:', error.message);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to update user status.',
+    });
+  } finally {
+    client.release();
+  }
+}
+
+// ------------------------------------------
+// CHANGE A USER'S ROLE
+// PATCH /api/admin/users/:id/role
+// ------------------------------------------
+async function updateUserRole(req, res) {
+  const userId = req.params.id;
+  const { role: requestedRole } = req.body;
+
+  const allowedRoles = ['user', 'admin', 'super_admin'];
+
+  if (!userId || !/^\d+$/.test(String(userId)) || Number(userId) < 1) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid user ID.',
+    });
+  }
+
+  if (!allowedRoles.includes(requestedRole)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid role.',
+    });
+  }
+
+  // Only super administrators may change roles.
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({
+      status: 'error',
+      message: 'Only a super administrator can change user roles.',
+    });
+  }
+
+  // Prevent changing your own role and accidentally losing access.
+  if (String(req.user.userId) === String(userId)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'You cannot change your own role.',
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const targetResult = await client.query(
+      `SELECT id, full_name, email, role, account_status
+       FROM public.users
+       WHERE id = $1
+       FOR UPDATE`,
+      [userId],
+    );
+
+    if (targetResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found.',
+      });
+    }
+
+    const target = targetResult.rows[0];
+
+    // Do not allow removal of the last super administrator.
+    if (target.role === 'super_admin' && requestedRole !== 'super_admin') {
+      const superAdminCount = await client.query(
+        `SELECT COUNT(*)::int AS count
+         FROM public.users
+         WHERE role = 'super_admin'`,
+      );
+
+      if (superAdminCount.rows[0].count <= 1) {
+        await client.query('ROLLBACK');
+
+        return res.status(400).json({
+          status: 'error',
+          message: 'You cannot remove the last super administrator.',
+        });
+      }
+    }
+
+    const updated = await client.query(
+      `UPDATE public.users
+       SET role = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING
+         id,
+         full_name,
+         email,
+         role,
+         account_status,
+         created_at,
+         updated_at,
+         location,
+         title`,
+      [requestedRole, userId],
+    );
+
+    await client.query(
+      `INSERT INTO audit_logs
+         (admin_id, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        req.user.userId,
+        'user_role_updated',
+        'user',
+        userId,
+        JSON.stringify({
+          previousRole: target.role,
+          newRole: requestedRole,
+          targetEmail: target.email,
+        }),
+      ],
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      status: 'success',
+      message: 'User role updated successfully.',
+      user: updated.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Update user role error:', error.message);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to update user role.',
+    });
+  } finally {
+    client.release();
+  }
+}
+
+// ------------------------------------------
+// GET REPORTS
+// ------------------------------------------
 async function getReports(req, res) {
   try {
     const result = await pool.query(`
@@ -101,6 +383,7 @@ async function getReports(req, res) {
     });
   } catch (error) {
     console.error('Admin reports error:', error.message);
+
     return res.status(500).json({
       status: 'error',
       message: 'Failed to load reports.',
@@ -108,6 +391,9 @@ async function getReports(req, res) {
   }
 }
 
+// ------------------------------------------
+// UPDATE REPORT
+// ------------------------------------------
 async function updateReport(req, res) {
   const reportId = Number(req.params.id);
   const { status, admin_notes } = req.body;
@@ -149,6 +435,7 @@ async function updateReport(req, res) {
 
     if (updated.rowCount === 0) {
       await client.query('ROLLBACK');
+
       return res.status(404).json({
         status: 'error',
         message: 'Report not found.',
@@ -192,6 +479,9 @@ async function updateReport(req, res) {
   }
 }
 
+// ------------------------------------------
+// GET AUDIT LOGS
+// ------------------------------------------
 async function getAuditLogs(req, res) {
   try {
     const result = await pool.query(`
@@ -218,6 +508,7 @@ async function getAuditLogs(req, res) {
     });
   } catch (error) {
     console.error('Admin audit log error:', error.message);
+
     return res.status(500).json({
       status: 'error',
       message: 'Failed to load audit logs.',
@@ -228,6 +519,8 @@ async function getAuditLogs(req, res) {
 module.exports = {
   getStats,
   getUsers,
+  updateUserStatus,
+  updateUserRole,
   getReports,
   updateReport,
   getAuditLogs,

@@ -1,14 +1,5 @@
 const pool = require('../config/db');
-
-// Helper: create a notification
-async function createNotification(userId, actorId, type, message, relatedId) {
-  await pool.query(
-    `INSERT INTO public.notifications
-       (user_id, actor_id, type, message, related_id)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, actorId, type, message, relatedId],
-  );
-}
+const { createNotification } = require('../services/notificationService');
 
 // Send a new skill-swap request
 const createRequest = async (req, res) => {
@@ -31,7 +22,8 @@ const createRequest = async (req, res) => {
 
     const offeredResult = await pool.query(
       `SELECT id, user_id, skill_name, skill_type
-       FROM public.skills WHERE id = $1`,
+       FROM public.skills
+       WHERE id = $1`,
       [offered_skill_id],
     );
 
@@ -60,7 +52,8 @@ const createRequest = async (req, res) => {
 
     const wantedResult = await pool.query(
       `SELECT id, user_id, skill_name, skill_type
-       FROM public.skills WHERE id = $1`,
+       FROM public.skills
+       WHERE id = $1`,
       [wanted_skill_id],
     );
 
@@ -99,7 +92,8 @@ const createRequest = async (req, res) => {
     }
 
     const duplicate = await pool.query(
-      `SELECT id FROM public.swap_requests
+      `SELECT id
+       FROM public.swap_requests
        WHERE requester_id = $1
          AND recipient_id = $2
          AND offered_skill_id = $3
@@ -117,8 +111,13 @@ const createRequest = async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO public.swap_requests
-       (requester_id, recipient_id, offered_skill_id,
-        wanted_skill_id, message)
+       (
+         requester_id,
+         recipient_id,
+         offered_skill_id,
+         wanted_skill_id,
+         message
+       )
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [
@@ -132,15 +131,15 @@ const createRequest = async (req, res) => {
 
     const request = result.rows[0];
 
-    // Notify the recipient that a new request arrived.
+    // Notify the recipient about the new request.
     try {
-      await createNotification(
-        request.recipient_id,
-        request.requester_id,
-        'swap_request',
-        'You received a new skill-swap request.',
-        request.id,
-      );
+      await createNotification({
+        userId: request.recipient_id,
+        actorId: request.requester_id,
+        type: 'swap_request',
+        message: 'You received a new skill-swap request.',
+        relatedId: request.id,
+      });
     } catch (notificationError) {
       console.error('Create request notification error:', notificationError);
     }
@@ -203,18 +202,28 @@ const getMyRequests = async (req, res) => {
 
     const result = await pool.query(
       `SELECT
-         sr.id, sr.requester_id, sr.recipient_id,
-         sr.offered_skill_id, sr.wanted_skill_id,
-         sr.message, sr.status, sr.created_at, sr.updated_at,
+         sr.id,
+         sr.requester_id,
+         sr.recipient_id,
+         sr.offered_skill_id,
+         sr.wanted_skill_id,
+         sr.message,
+         sr.status,
+         sr.created_at,
+         sr.updated_at,
          requester.full_name AS requester_name,
          recipient.full_name AS recipient_name,
          offered.skill_name AS offered_skill_name,
          wanted.skill_name AS wanted_skill_name
        FROM public.swap_requests sr
-       JOIN public.users requester ON requester.id = sr.requester_id
-       JOIN public.users recipient ON recipient.id = sr.recipient_id
-       JOIN public.skills offered ON offered.id = sr.offered_skill_id
-       JOIN public.skills wanted ON wanted.id = sr.wanted_skill_id
+       JOIN public.users requester
+         ON requester.id = sr.requester_id
+       JOIN public.users recipient
+         ON recipient.id = sr.recipient_id
+       JOIN public.skills offered
+         ON offered.id = sr.offered_skill_id
+       JOIN public.skills wanted
+         ON wanted.id = sr.wanted_skill_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY sr.created_at DESC`,
       values,
@@ -242,7 +251,8 @@ const acceptRequest = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE public.swap_requests
-       SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
+       SET status = 'accepted',
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
          AND recipient_id = $2
          AND status = 'pending'
@@ -259,14 +269,15 @@ const acceptRequest = async (req, res) => {
 
     const request = result.rows[0];
 
+    // Notify the original requester that their request was accepted.
     try {
-      await createNotification(
-        request.requester_id,
-        request.recipient_id,
-        'request_accepted',
-        'Your skill-swap request was accepted.',
-        request.id,
-      );
+      await createNotification({
+        userId: request.requester_id,
+        actorId: req.user.userId,
+        type: 'request_accepted',
+        message: 'Your skill-swap request was accepted.',
+        relatedId: request.id,
+      });
     } catch (notificationError) {
       console.error('Accept request notification error:', notificationError);
     }
@@ -293,7 +304,8 @@ const rejectRequest = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE public.swap_requests
-       SET status = 'rejected', updated_at = CURRENT_TIMESTAMP
+       SET status = 'rejected',
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = $1
          AND recipient_id = $2
          AND status = 'pending'
@@ -310,14 +322,15 @@ const rejectRequest = async (req, res) => {
 
     const request = result.rows[0];
 
+    // Notify the original requester that their request was rejected.
     try {
-      await createNotification(
-        request.requester_id,
-        request.recipient_id,
-        'request_rejected',
-        'Your skill-swap request was rejected.',
-        request.id,
-      );
+      await createNotification({
+        userId: request.requester_id,
+        actorId: req.user.userId,
+        type: 'request_rejected',
+        message: 'Your skill-swap request was rejected.',
+        relatedId: request.id,
+      });
     } catch (notificationError) {
       console.error('Reject request notification error:', notificationError);
     }

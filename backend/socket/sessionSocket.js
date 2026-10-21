@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 
 function registerSessionSocket(io) {
-  // Authenticate every Socket.IO connection using the user's JWT.
+  // Authenticate each Socket.IO connection using the user's JWT.
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
 
@@ -12,12 +12,13 @@ function registerSessionSocket(io) {
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = decoded.userId ?? decoded.user_id;
 
-      if (!decoded.userId) {
+      if (userId === undefined || userId === null) {
         return next(new Error('Invalid authentication token.'));
       }
 
-      socket.data.userId = decoded.userId;
+      socket.data.userId = userId;
       next();
     } catch (error) {
       next(new Error('Invalid or expired token. Please log in again.'));
@@ -27,7 +28,7 @@ function registerSessionSocket(io) {
   io.on('connection', (socket) => {
     console.log(`Authenticated socket connected: ${socket.id}`);
 
-    // Confirm that this user belongs to the requested session.
+    // Join a session only if the authenticated user is a participant.
     socket.on('session:join', async (payload = {}, callback) => {
       const reply = typeof callback === 'function' ? callback : () => {};
       const sessionId = payload.sessionId;
@@ -47,22 +48,25 @@ function registerSessionSocket(io) {
       try {
         const result = await pool.query(
           `SELECT
-     s.id AS session_id,
-     s.status,
-     own.full_name AS user_name,
-     partner.full_name AS partner_name
-   FROM public.sessions s
-   JOIN public.swap_requests sr
-     ON sr.id = s.swap_request_id
-   JOIN public.users own
-     ON own.id = $2
-   JOIN public.users partner
-     ON partner.id = CASE
-       WHEN sr.requester_id = $2 THEN sr.recipient_id
-       ELSE sr.requester_id
-     END
-   WHERE s.id = $1
-     AND (sr.requester_id = $2 OR sr.recipient_id = $2)`,
+             s.id AS session_id,
+             s.status,
+             own.full_name AS user_name,
+             partner.full_name AS partner_name
+           FROM public.sessions s
+           JOIN public.swap_requests sr
+             ON sr.id = s.swap_request_id
+           JOIN public.users own
+             ON own.id = $2
+           JOIN public.users partner
+             ON partner.id = CASE
+               WHEN sr.requester_id = $2 THEN sr.recipient_id
+               ELSE sr.requester_id
+             END
+           WHERE s.id = $1
+             AND (
+               sr.requester_id = $2
+               OR sr.recipient_id = $2
+             )`,
           [sessionId, userId],
         );
 
@@ -74,42 +78,53 @@ function registerSessionSocket(io) {
         }
 
         const session = result.rows[0];
-        socket.data.userName = session.full_name;
-        socket.data.userName = session.user_name;
 
-        if (session.status === 'cancelled' || session.status === 'completed') {
+        // Do not allow entry into sessions that have ended or been cancelled.
+        if (
+          ['cancelled', 'completed'].includes(
+            String(session.status).toLowerCase(),
+          )
+        ) {
           return reply({
-            status: 'success',
-            sessionId: session.session_id,
-            userId,
-            userName: session.user_name,
-            partnerName: session.partner_name,
+            status: 'error',
+            message: 'This session is no longer available.',
           });
-        }
-
-        // Leave any previous session room.
-        for (const joinedRoom of socket.rooms) {
-          if (joinedRoom.startsWith('session:')) {
-            socket.leave(joinedRoom);
-          }
         }
 
         const room = `session:${session.session_id}`;
 
+        // Leave a previous session cleanly before joining another.
+        const previousSessionId = socket.data.sessionId;
+
+        if (
+          previousSessionId &&
+          previousSessionId !== String(session.session_id)
+        ) {
+          const previousRoom = `session:${previousSessionId}`;
+
+          socket.to(previousRoom).emit('session:participant-left', {
+            userId: socket.data.userId,
+            userName: socket.data.userName,
+          });
+
+          socket.leave(previousRoom);
+        }
+
         socket.join(room);
         socket.data.sessionId = String(session.session_id);
-        socket.data.userName = session.full_name;
+        socket.data.userName = session.user_name;
 
         reply({
           status: 'success',
           sessionId: session.session_id,
           userId,
-          userName: session.full_name,
+          userName: session.user_name,
+          partnerName: session.partner_name,
         });
 
         socket.to(room).emit('session:participant-joined', {
           userId,
-          userName: session.full_name,
+          userName: session.user_name,
         });
 
         console.log(`User ${userId} joined session ${session.session_id}`);
@@ -123,12 +138,13 @@ function registerSessionSocket(io) {
       }
     });
 
-    // Send a text message to the other participant in this session.
+    // Send a real-time chat message to the other participant.
     socket.on('session:chat-send', (payload = {}, callback) => {
       const reply = typeof callback === 'function' ? callback : () => {};
       const sessionId = socket.data.sessionId;
+      const room = `session:${sessionId}`;
 
-      if (!sessionId || !socket.rooms.has(`session:${sessionId}`)) {
+      if (!sessionId || !socket.rooms.has(room)) {
         return reply({
           status: 'error',
           message: 'Join an authorized session before chatting.',
@@ -160,17 +176,17 @@ function registerSessionSocket(io) {
         createdAt: new Date().toISOString(),
       };
 
-      socket.to(`session:${sessionId}`).emit('session:chat-message', message);
-
+      socket.to(room).emit('session:chat-message', message);
       reply({ status: 'success', message });
     });
 
-    // WebRTC signaling: send an offer to the other session participant.
+    // Forward WebRTC offers to the other participant.
     socket.on('webrtc:offer', (payload = {}, callback) => {
       const reply = typeof callback === 'function' ? callback : () => {};
-      const room = `session:${socket.data.sessionId}`;
+      const sessionId = socket.data.sessionId;
+      const room = `session:${sessionId}`;
 
-      if (!socket.data.sessionId || !socket.rooms.has(room) || !payload.offer) {
+      if (!sessionId || !socket.rooms.has(room) || !payload.offer) {
         return reply({
           status: 'error',
           message: 'Join a session before sending a call offer.',
@@ -186,16 +202,13 @@ function registerSessionSocket(io) {
       reply({ status: 'success' });
     });
 
-    // WebRTC signaling: return the answer to the caller.
+    // Forward WebRTC answers to the other participant.
     socket.on('webrtc:answer', (payload = {}, callback) => {
       const reply = typeof callback === 'function' ? callback : () => {};
-      const room = `session:${socket.data.sessionId}`;
+      const sessionId = socket.data.sessionId;
+      const room = `session:${sessionId}`;
 
-      if (
-        !socket.data.sessionId ||
-        !socket.rooms.has(room) ||
-        !payload.answer
-      ) {
+      if (!sessionId || !socket.rooms.has(room) || !payload.answer) {
         return reply({
           status: 'error',
           message: 'Join a session before sending a call answer.',
@@ -210,16 +223,13 @@ function registerSessionSocket(io) {
       reply({ status: 'success' });
     });
 
-    // WebRTC signaling: exchange network connection candidates.
+    // Forward ICE candidates to the other participant.
     socket.on('webrtc:ice-candidate', (payload = {}, callback) => {
       const reply = typeof callback === 'function' ? callback : () => {};
-      const room = `session:${socket.data.sessionId}`;
+      const sessionId = socket.data.sessionId;
+      const room = `session:${sessionId}`;
 
-      if (
-        !socket.data.sessionId ||
-        !socket.rooms.has(room) ||
-        !payload.candidate
-      ) {
+      if (!sessionId || !socket.rooms.has(room) || !payload.candidate) {
         return reply({
           status: 'error',
           message: 'Join a session before sending an ICE candidate.',
@@ -234,7 +244,7 @@ function registerSessionSocket(io) {
       reply({ status: 'success' });
     });
 
-    // Leave the active session room.
+    // Leave the current session and notify the remaining participant.
     socket.on('session:leave', () => {
       const sessionId = socket.data.sessionId;
 
@@ -253,6 +263,7 @@ function registerSessionSocket(io) {
       delete socket.data.userName;
     });
 
+    // Handle unexpected disconnects.
     socket.on('disconnect', () => {
       const sessionId = socket.data.sessionId;
 

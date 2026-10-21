@@ -17,6 +17,7 @@ const registerSessionSocket = require('./socket/sessionSocket');
 const registerMessageSocket = require('./socket/messageSocket');
 const adminRoutes = require('./routes/adminRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const accountRoutes = require('./routes/accountRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -40,6 +41,7 @@ app.use('/api/profiles', profileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/account', accountRoutes);
 
 app.get('/', (req, res) => {
   res.json({
@@ -76,7 +78,7 @@ const io = new Server(server, {
 });
 
 app.set('io', io);
-
+global.notificationIO = io;
 // Video calling will be registered here in the next step.
 registerSessionSocket(io);
 registerMessageSocket(io);

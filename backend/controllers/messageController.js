@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { createNotification } = require('../services/notificationService');
 const fs = require('fs');
 const path = require('path');
 
@@ -141,6 +142,22 @@ async function sendMessage(req, res) {
       io.to(`user:${senderId}`)
         .to(`user:${receiverId}`)
         .emit('message:new', completeMessage);
+    }
+    // Save and broadcast a notification to the message recipient.
+    // Save and broadcast a notification to the message recipient.
+    try {
+      const senderName =
+        completeMessage.sender_name || completeMessage.full_name || 'somebody';
+
+      await createNotification({
+        userId: receiverId,
+        actorId: senderId,
+        type: 'new_message',
+        message: `You received a new message from ${senderName}.`,
+        relatedId: completeMessage.id,
+      });
+    } catch (notificationError) {
+      console.error('Direct message notification error:', notificationError);
     }
 
     return res.status(201).json({

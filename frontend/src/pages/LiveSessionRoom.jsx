@@ -34,6 +34,7 @@ function LiveSessionRoom() {
   const offerPendingRef = useRef(false);
   const micOnRef = useRef(true);
   const videoOnRef = useRef(true);
+  const sharingRef = useRef(false);
   const createOfferRef = useRef(null);
 
   // UI state
@@ -253,7 +254,7 @@ function LiveSessionRoom() {
     };
 
     return pc;
-  }, [ensureLocalStream, sharing]);
+  }, [ensureLocalStream]);
 
   const createOffer = useCallback(async () => {
     if (!roomJoinedRef.current) return;
@@ -577,6 +578,10 @@ function LiveSessionRoom() {
       peerConnectionRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    sharingRef.current = sharing;
+  }, [sharing]);
 
   function formatTime(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);

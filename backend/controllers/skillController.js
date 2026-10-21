@@ -144,6 +144,8 @@ const discoverSkills = async (req, res) => {
        FROM public.skills s
        JOIN public.users u ON u.id = s.user_id
        WHERE ${conditions.join(' AND ')}
+  AND LOWER(COALESCE(u.role, 'user')) = 'user'
+  AND LOWER(COALESCE(u.account_status, 'active')) = 'active'
        ORDER BY s.created_at DESC`,
       values,
     );

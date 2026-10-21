@@ -3,13 +3,11 @@ import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import '../styles/Navbar.css';
 
 const API_URL = 'http://localhost:5000/api';
-const defaultUnreadCount = 2;
 
 function getUnreadCount() {
   try {
     const saved = localStorage.getItem('swapSkillNotifications');
-
-    if (saved === null) return defaultUnreadCount;
+    if (!saved) return 0;
 
     const notifications = JSON.parse(saved);
 
@@ -48,39 +46,137 @@ function Navbar() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(getUnreadCount);
+
   const [isLoggedIn, setIsLoggedIn] = useState(() =>
     Boolean(localStorage.getItem('token')),
   );
 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminCheckComplete, setAdminCheckComplete] = useState(
+    () => !localStorage.getItem('token'),
+  );
+
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(getUnreadCount);
 
   const displayName =
-    profile?.full_name || profile?.fullName || profile?.name || 'My Account';
+    profile?.full_name ||
+    profile?.fullName ||
+    profile?.name ||
+    (isAdmin ? 'Administrator' : 'My Account');
 
   const initial = getInitials(displayName);
 
   const profileImage =
     profile?.profile_image || profile?.profileImage || profile?.avatar || '';
 
+  // Keep the navbar synchronized with login, logout, and route changes.
   useEffect(() => {
-    const loggedIn = Boolean(localStorage.getItem('token'));
+    function syncLoginState() {
+      const token = localStorage.getItem('token');
 
-    setIsLoggedIn(loggedIn);
-    setMenuOpen(false);
-    setAccountOpen(false);
+      setIsLoggedIn(Boolean(token));
+
+      if (!token) {
+        setIsAdmin(false);
+        setAdminCheckComplete(true);
+        setProfile(null);
+        setProfileLoading(false);
+        setUnreadCount(0);
+        setAccountOpen(false);
+        setMenuOpen(false);
+      }
+    }
+
+    syncLoginState();
+
+    window.addEventListener('authChanged', syncLoginState);
+    window.addEventListener('storage', syncLoginState);
+
+    return () => {
+      window.removeEventListener('authChanged', syncLoginState);
+      window.removeEventListener('storage', syncLoginState);
+    };
   }, [location.pathname]);
 
-  // Load the logged-in user's profile from the database.
+  // Recheck login state immediately when the login component announces a change.
+  useEffect(() => {
+    function handleAuthChanged() {
+      const token = localStorage.getItem('token');
+
+      setIsLoggedIn(Boolean(token));
+
+      if (!token) {
+        setIsAdmin(false);
+        setAdminCheckComplete(true);
+        setProfile(null);
+        setUnreadCount(0);
+      } else {
+        setAdminCheckComplete(false);
+      }
+    }
+
+    window.addEventListener('authChanged', handleAuthChanged);
+
+    return () => {
+      window.removeEventListener('authChanged', handleAuthChanged);
+    };
+  }, []);
+
+  // Verify whether the logged-in account is an administrator.
   useEffect(() => {
     const token = localStorage.getItem('token');
     let cancelled = false;
 
-    if (!token) {
+    if (!token || !isLoggedIn) {
+      setIsAdmin(false);
+      setAdminCheckComplete(true);
+      return undefined;
+    }
+
+    setAdminCheckComplete(false);
+
+    async function verifyAdmin() {
+      try {
+        const response = await fetch(`${API_URL}/admin/verify`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!cancelled) {
+          setIsAdmin(response.ok);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setIsAdmin(false);
+          console.error('Admin verification failed:', error);
+        }
+      } finally {
+        if (!cancelled) {
+          setAdminCheckComplete(true);
+        }
+      }
+    }
+
+    verifyAdmin();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, location.pathname]);
+
+  // Load the logged-in user's profile.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    let cancelled = false;
+
+    if (!token || !isLoggedIn) {
       setProfile(null);
       setProfileLoading(false);
-      return;
+      return undefined;
     }
 
     async function loadProfile() {
@@ -121,8 +217,56 @@ function Navbar() {
     return () => {
       cancelled = true;
     };
-  }, [location.pathname]);
+  }, [isLoggedIn, location.pathname]);
 
+  // Fetch the unread notification count from the backend.
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    let cancelled = false;
+
+    if (!token || !isLoggedIn) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    async function fetchUnreadCount() {
+      try {
+        const response = await fetch(`${API_URL}/notifications/unread-count`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch notification count.');
+        }
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          setUnreadCount(Number(data.unread_count ?? 0) || 0);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Notification count error:', error);
+        }
+      }
+    }
+
+    fetchUnreadCount();
+
+    const handleFocus = () => fetchUnreadCount();
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isLoggedIn, location.pathname]);
+
+  // Keep the existing local notification update event supported.
   useEffect(() => {
     function updateUnreadCount() {
       setUnreadCount(getUnreadCount());
@@ -130,7 +274,6 @@ function Navbar() {
 
     window.addEventListener('swapSkillNotificationsUpdated', updateUnreadCount);
     window.addEventListener('storage', updateUnreadCount);
-    window.addEventListener('focus', updateUnreadCount);
 
     return () => {
       window.removeEventListener(
@@ -138,7 +281,6 @@ function Navbar() {
         updateUnreadCount,
       );
       window.removeEventListener('storage', updateUnreadCount);
-      window.removeEventListener('focus', updateUnreadCount);
     };
   }, []);
 
@@ -153,24 +295,38 @@ function Navbar() {
     localStorage.removeItem('userName');
     localStorage.removeItem('name');
 
-    setProfile(null);
     setIsLoggedIn(false);
+    setIsAdmin(false);
+    setAdminCheckComplete(true);
+    setProfile(null);
+    setProfileLoading(false);
+    setUnreadCount(0);
+
     closeMenus();
+
+    // Notify other components that the user has logged out.
+    window.dispatchEvent(new Event('authChanged'));
+
     navigate('/login', { replace: true });
   }
 
-  const mainLinks = isLoggedIn
+  // Wait for admin verification before showing role-specific links.
+  const mainLinks = !isLoggedIn
     ? [
         { label: 'Home', path: '/' },
         { label: 'Discover', path: '/discover' },
-        { label: 'My Skills', path: '/my-skills' },
-        { label: 'Dashboard', path: '/dashboard' },
-        { label: '+Add Skill', path: '/add-skill' },
       ]
-    : [
-        { label: 'Home', path: '/' },
-        { label: 'Discover', path: '/discover' },
-      ];
+    : !adminCheckComplete
+      ? []
+      : isAdmin
+        ? [{ label: 'Admin Dashboard', path: '/admin' }]
+        : [
+            { label: 'Home', path: '/' },
+            { label: 'Discover', path: '/discover' },
+            { label: 'My Skills', path: '/my-skills' },
+            { label: 'Dashboard', path: '/dashboard' },
+            { label: '+ Add Skill', path: '/add-skill' },
+          ];
 
   return (
     <header className="site-navbar">
@@ -298,58 +454,84 @@ function Navbar() {
 
                         <span className="navbar-account-details">
                           <strong>{displayName}</strong>
-                          <small>{profile?.title || 'Skill Swapper'}</small>
+                          <small>
+                            {isAdmin
+                              ? 'Platform Administrator'
+                              : profile?.title || 'Skill Swapper'}
+                          </small>
                         </span>
                       </div>
 
                       <div className="navbar-menu-divider" />
 
-                      <NavLink
-                        to="/profile/me"
-                        onClick={closeMenus}
-                        className="navbar-dropdown-link"
-                      >
-                        <span aria-hidden="true">◉</span>
-                        My Profile
-                      </NavLink>
+                      {isAdmin ? (
+                        <NavLink
+                          to="/admin"
+                          onClick={closeMenus}
+                          className="navbar-dropdown-link"
+                        >
+                          <span aria-hidden="true">▦</span>
+                          Admin Dashboard
+                        </NavLink>
+                      ) : (
+                        <>
+                          <NavLink
+                            to="/profile/me"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">◉</span>
+                            My Profile
+                          </NavLink>
 
-                      <NavLink
-                        to="/edit-profile"
-                        onClick={closeMenus}
-                        className="navbar-dropdown-link"
-                      >
-                        <span aria-hidden="true">✎</span>
-                        Edit Profile
-                      </NavLink>
+                          <NavLink
+                            to="/edit-profile"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">✎</span>
+                            Edit Profile
+                          </NavLink>
 
-                      <NavLink
-                        to="/requests"
-                        onClick={closeMenus}
-                        className="navbar-dropdown-link"
-                      >
-                        <span aria-hidden="true">⇄</span>
-                        Requests
-                      </NavLink>
+                          <NavLink
+                            to="/requests"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">⇄</span>
+                            Requests
+                          </NavLink>
 
-                      <NavLink
-                        to="/sessions"
-                        onClick={closeMenus}
-                        className="navbar-dropdown-link"
-                      >
-                        <span aria-hidden="true">◷</span>
-                        Sessions
-                      </NavLink>
+                          <NavLink
+                            to="/sessions"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">◷</span>
+                            Sessions
+                          </NavLink>
 
-                      <NavLink
-                        to="/messages"
-                        onClick={closeMenus}
-                        className="navbar-dropdown-link"
-                      >
-                        <span aria-hidden="true">✉</span>
-                        Messages
-                      </NavLink>
+                          <NavLink
+                            to="/messages"
+                            onClick={closeMenus}
+                            className="navbar-dropdown-link"
+                          >
+                            <span aria-hidden="true">✉</span>
+                            Messages
+                          </NavLink>
+                        </>
+                      )}
 
                       <div className="navbar-menu-divider" />
+
+                      <NavLink
+                        to="/help"
+                        onClick={closeMenus}
+                        className="navbar-dropdown-link"
+                      >
+                        <span aria-hidden="true">?</span>
+                        Help &amp; Support
+                      </NavLink>
 
                       <button
                         type="button"

@@ -8,6 +8,8 @@ const {
   getReports,
   updateReport,
   getAuditLogs,
+  updateUserStatus,
+  updateUserRole,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -28,6 +30,9 @@ router.get('/verify', (req, res) => {
 
 router.get('/stats', getStats);
 router.get('/users', getUsers);
+
+router.patch('/users/:id/status', updateUserStatus);
+router.patch('/users/:id/role', updateUserRole);
 
 router.get('/reports', getReports);
 router.patch('/reports/:id', updateReport);

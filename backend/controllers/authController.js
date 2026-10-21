@@ -6,13 +6,6 @@ async function register(req, res) {
   try {
     const { full_name, email, password } = req.body || {};
 
-    if (!full_name || !email || !password) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Full name, email, and password are required.',
-      });
-    }
-
     if (
       typeof full_name !== 'string' ||
       typeof email !== 'string' ||
@@ -20,7 +13,7 @@ async function register(req, res) {
     ) {
       return res.status(400).json({
         status: 'error',
-        message: 'All fields must be valid text.',
+        message: 'Full name, email, and password are required.',
       });
     }
 
@@ -53,8 +46,10 @@ async function register(req, res) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Public registration always creates an ordinary user account.
+    // Never accept a role supplied by the client.
     const result = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash)
+      `INSERT INTO public.users (full_name, email, password_hash)
        VALUES ($1, $2, $3)
        RETURNING id, full_name, email, role, created_at`,
       [cleanName, cleanEmail, passwordHash],
@@ -101,8 +96,15 @@ async function login(req, res) {
     const cleanEmail = email.trim().toLowerCase();
 
     const result = await pool.query(
-      `SELECT id, full_name, email, password_hash, role
-       FROM users
+      `SELECT
+          id,
+          full_name,
+          email,
+          password_hash,
+          role,
+          account_status,
+          token_version
+       FROM public.users
        WHERE email = $1`,
       [cleanEmail],
     );
@@ -125,6 +127,14 @@ async function login(req, res) {
       });
     }
 
+    if (user.account_status !== 'active') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Your account is not active. Please contact support.',
+        accountStatus: user.account_status,
+      });
+    }
+
     if (!process.env.JWT_SECRET) {
       console.error('JWT_SECRET is missing from backend/.env');
 
@@ -134,10 +144,13 @@ async function login(req, res) {
       });
     }
 
+    const tokenVersion = Number(user.token_version);
+
     const token = jwt.sign(
       {
         userId: user.id,
         role: user.role,
+        tokenVersion,
       },
       process.env.JWT_SECRET,
       { expiresIn: '1h' },

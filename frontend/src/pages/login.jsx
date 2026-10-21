@@ -47,10 +47,12 @@ export default function Login() {
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
 
-      if (result.user?.role === 'admin') {
-        navigate('/admin');
+      const role = result.user?.role;
+
+      if (role === 'admin' || role === 'super_admin') {
+        navigate('/admin', { replace: true });
       } else {
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       }
     } catch (err) {
       setError(

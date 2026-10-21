@@ -15,6 +15,7 @@ function getNotificationTitle(type) {
     rejected: 'Request rejected',
     request_rejected: 'Request rejected',
     message: 'New message',
+    new_message: 'New message',
     session: 'Session update',
     review: 'New review',
   };
@@ -31,6 +32,7 @@ function getNotificationIcon(type) {
     rejected: '❌',
     request_rejected: '❌',
     message: '💬',
+    new_message: '💬',
     session: '📅',
     review: '⭐',
   };
@@ -48,14 +50,17 @@ function formatTime(dateString) {
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
 
   if (seconds < 60) return 'Just now';
+
   if (seconds < 3600) {
     const minutes = Math.floor(seconds / 60);
     return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
   }
+
   if (seconds < 86400) {
     const hours = Math.floor(seconds / 3600);
     return `${hours} hour${hours === 1 ? '' : 's'} ago`;
   }
+
   if (seconds < 604800) {
     const days = Math.floor(seconds / 86400);
     return `${days} day${days === 1 ? '' : 's'} ago`;
@@ -77,16 +82,14 @@ function Notifications() {
 
     try {
       const result = await getNotifications();
-
       const rows = Array.isArray(result.data) ? result.data : [];
 
       const formattedNotifications = rows.map((item) => ({
         id: item.id,
         type: item.type || 'general',
         title: getNotificationTitle(item.type),
-        message: item.actor_name
-          ? `${item.actor_name}: ${item.message}`
-          : item.message,
+        // Display only the notification message; don't prepend actor_name.
+        message: item.message,
         time: formatTime(item.created_at),
         read: item.is_read === true,
         icon: getNotificationIcon(item.type),
@@ -94,7 +97,6 @@ function Notifications() {
 
       setNotifications(formattedNotifications);
 
-      // Keep a temporary cache for components using the previous format.
       localStorage.setItem(
         'swapSkillNotifications',
         JSON.stringify(formattedNotifications),
