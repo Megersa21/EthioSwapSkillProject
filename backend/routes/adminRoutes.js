@@ -1,4 +1,5 @@
 const express = require('express');
+
 const authMiddleware = require('../middleware/authMiddleware');
 const adminMiddleware = require('../middleware/adminMiddleware');
 
@@ -10,6 +11,7 @@ const {
   getAuditLogs,
   updateUserStatus,
   updateUserRole,
+  deleteUser,
 } = require('../controllers/adminController');
 
 const {
@@ -20,9 +22,10 @@ const {
 
 const router = express.Router();
 
-// All admin endpoints require authentication and admin privileges.
+// All routes in this file require an authenticated administrator.
 router.use(authMiddleware, adminMiddleware);
 
+// Verify admin access.
 router.get('/verify', (req, res) => {
   res.json({
     status: 'success',
@@ -34,19 +37,23 @@ router.get('/verify', (req, res) => {
   });
 });
 
+// Dashboard statistics.
 router.get('/stats', getStats);
-router.get('/users', getUsers);
 
+// User management.
+router.get('/users', getUsers);
 router.patch('/users/:id/status', updateUserStatus);
 router.patch('/users/:id/role', updateUserRole);
+router.delete('/users/:id', deleteUser);
 
+// Reports.
 router.get('/reports', getReports);
 router.patch('/reports/:id', updateReport);
 
+// Audit logs.
 router.get('/audit-logs', getAuditLogs);
-router.use(authMiddleware, adminMiddleware);
 
-// Admin-only Contact Us inbox.
+// Contact Us inbox.
 router.get('/contact-messages', getContactMessages);
 router.patch('/contact-messages/:id/read', markContactMessageRead);
 router.patch('/contact-messages/:id/resolve', resolveContactMessage);

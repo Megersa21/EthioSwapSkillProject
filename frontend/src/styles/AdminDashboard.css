@@ -779,3 +779,19 @@
   color: #ffffff;
   padding: 10px;
 }
+
+.admin-button-delete {
+  background: #b91c1c;
+  color: #ffffff;
+  border: 1px solid #b91c1c;
+}
+
+.admin-button-delete:hover:not(:disabled) {
+  background: #991b1b;
+  border-color: #991b1b;
+}
+
+.admin-button-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

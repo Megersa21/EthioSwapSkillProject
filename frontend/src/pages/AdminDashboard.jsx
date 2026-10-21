@@ -86,7 +86,7 @@ function AdminDashboard() {
   const [reportSearch, setReportSearch] = useState('');
   const [reportFilter, setReportFilter] = useState('all');
   const [selectedContact, setSelectedContact] = useState(null);
-
+  const [deletingUserId, setDeletingUserId] = useState(null);
   const [adminForm, setAdminForm] = useState({
     full_name: '',
     email: '',
@@ -351,6 +351,37 @@ function AdminDashboard() {
       setError(err.message || 'Could not update this account.');
     } finally {
       setChangingAccountId(null);
+    }
+  }
+
+  async function deleteUser(user) {
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete this account?\n\n` +
+        `Name: ${user.full_name}\n` +
+        `Email: ${user.email}\n\n` +
+        `This action cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    setDeletingUserId(user.id);
+    setError('');
+    setNotice('');
+
+    try {
+      const result = await adminFetch(`/admin/users/${user.id}`, {
+        method: 'DELETE',
+      });
+
+      setUsers((current) =>
+        current.filter((item) => String(item.id) !== String(user.id)),
+      );
+
+      setNotice(result.message || 'User deleted successfully.');
+    } catch (error) {
+      setError(error.message || 'Failed to delete this user.');
+    } finally {
+      setDeletingUserId(null);
     }
   }
 
@@ -721,6 +752,18 @@ function AdminDashboard() {
                                   }
                                 >
                                   Ban
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-button admin-button-delete"
+                                  disabled={
+                                    isChanging || deletingUserId === user.id
+                                  }
+                                  onClick={() => deleteUser(user)}
+                                >
+                                  {deletingUserId === user.id
+                                    ? 'Deleting...'
+                                    : 'Delete'}
                                 </button>
                               </>
                             ) : accountStatus === 'suspended' ||

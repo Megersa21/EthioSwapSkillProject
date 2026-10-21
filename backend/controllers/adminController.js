@@ -351,7 +351,130 @@ async function updateUserRole(req, res) {
     client.release();
   }
 }
+// ------------------------------------------
+// DELETE A USER PERMANENTLY
+// DELETE /api/admin/users/:id
+// ------------------------------------------
+async function deleteUser(req, res) {
+  const userId = req.params.id;
 
+  if (!/^\d+$/.test(String(userId)) || Number(userId) < 1) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid user ID.',
+    });
+  }
+
+  // Never allow an administrator to delete their own account.
+  if (String(req.user.userId) === String(userId)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'You cannot delete your own account.',
+    });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const targetResult = await client.query(
+      `SELECT id, full_name, email, role, account_status
+       FROM public.users
+       WHERE id = $1
+       FOR UPDATE`,
+      [userId],
+    );
+
+    if (targetResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found.',
+      });
+    }
+
+    const target = targetResult.rows[0];
+
+    // Never delete a super administrator through this endpoint.
+    if (target.role === 'super_admin') {
+      await client.query('ROLLBACK');
+
+      return res.status(403).json({
+        status: 'error',
+        message: 'Super administrator accounts are protected.',
+      });
+    }
+
+    // Only the super administrator may delete another administrator.
+    if (target.role === 'admin' && req.user.role !== 'super_admin') {
+      await client.query('ROLLBACK');
+
+      return res.status(403).json({
+        status: 'error',
+        message:
+          'Only a super administrator can delete administrator accounts.',
+      });
+    }
+
+    // Delete the account. If related records prevent deletion,
+    // PostgreSQL will reject the operation and the transaction rolls back.
+    const deleted = await client.query(
+      `DELETE FROM public.users
+       WHERE id = $1
+       RETURNING id, full_name, email, role`,
+      [userId],
+    );
+
+    // Record the action in the audit log.
+    await client.query(
+      `INSERT INTO audit_logs
+         (admin_id, action, target_type, target_id, details)
+       VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        req.user.userId,
+        'user_deleted',
+        'user',
+        userId,
+        JSON.stringify({
+          deletedUserId: target.id,
+          deletedUserName: target.full_name,
+          deletedUserEmail: target.email,
+          deletedUserRole: target.role,
+        }),
+      ],
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      status: 'success',
+      message: 'User deleted successfully.',
+      user: deleted.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+
+    console.error('Delete user error:', error.message);
+
+    // Related records may have foreign keys that block deletion.
+    if (error.code === '23503') {
+      return res.status(409).json({
+        status: 'error',
+        message:
+          'This user has related records that prevent permanent deletion. Suspend the account instead, or review the database relationships before deleting.',
+      });
+    }
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete user.',
+    });
+  } finally {
+    client.release();
+  }
+}
 // ------------------------------------------
 // GET REPORTS
 // ------------------------------------------
@@ -521,6 +644,7 @@ module.exports = {
   getUsers,
   updateUserStatus,
   updateUserRole,
+  deleteUser,
   getReports,
   updateReport,
   getAuditLogs,
