@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/AddSkill.css';
 
-const API_URL = 'http://localhost:5000/api/skills';
+const API_URL = `${
+  import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+}/skills`;
 
 export default function AddSkill() {
   const navigate = useNavigate();

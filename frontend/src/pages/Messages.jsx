@@ -4,11 +4,11 @@ import socket from '../socket';
 
 import '../styles/Messages.css';
 
-const SERVER_URL = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000'
-).replace(/\/$/, '');
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-const API_URL = `${SERVER_URL}/api`;
+const SERVER_URL = (
+  import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'
+).replace(/\/$/, '');
 
 function readToken() {
   return (

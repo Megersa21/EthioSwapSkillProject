@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import '../styles/Profile.css';
 
-const API_BASE = 'http://localhost:5000/api/profiles';
+const API_BASE = `${
+  import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+}/profiles`;
 
 function getInitials(name = '') {
   return (
