@@ -3,3 +3,29 @@ node_modules/
 .env.*
 !.env.example
 uploads/
+ethioswapskill_backup.dump
+
+# Local database backups
+*.dump
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Dependencies
+node_modules/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Database backups
+*.dump
+
+# Logs
+npm-debug.log*
