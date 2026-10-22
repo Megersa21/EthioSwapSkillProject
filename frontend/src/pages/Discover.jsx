@@ -319,6 +319,9 @@ function Discover() {
     setFeedback('');
     setError('');
 
+    console.log('SEND REQUEST — myTeachSkills:', myTeachSkills);
+    console.log('SEND REQUEST — count:', myTeachSkills.length);
+
     if (!myTeachSkills.length) {
       setFeedback(
         'Add at least one skill you can teach in My Skills before sending a request.',
