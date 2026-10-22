@@ -154,9 +154,18 @@ function Discover() {
         ),
       );
       const sentRequests = getRequestsFromResponse(requestsResult);
+      console.log('BEFORE SET STATE — ownSkills:', ownSkills);
 
       setMySkills(ownSkills);
+
+      console.log('AFTER SET STATE — ownSkills:', ownSkills);
+      setMySkills(ownSkills);
       setRequests(sentRequests);
+      console.log('BEFORE SET STATE — ownSkills:', ownSkills);
+
+      setMySkills(ownSkills);
+
+      console.log('AFTER SET STATE — ownSkills:', ownSkills);
 
       // Group all database skill records into one card per member.
       const grouped = new Map();
@@ -262,6 +271,9 @@ function Discover() {
     loadDiscoverData();
   }, [loadDiscoverData]);
 
+  useEffect(() => {
+    console.log('REACT STATE — mySkills:', mySkills);
+  }, [mySkills]);
   const myTeachSkills = useMemo(
     () =>
       mySkills.filter(
