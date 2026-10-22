@@ -143,7 +143,16 @@ function Discover() {
         ]);
 
       const discoveredSkills = getSkillsFromResponse(discoverResult);
+
       const ownSkills = getSkillsFromResponse(mySkillsResult);
+      console.log('MY SKILLS:', ownSkills);
+
+      console.log(
+        'TEACHING SKILLS:',
+        ownSkills.filter(
+          (skill) => String(skill.skill_type).trim().toLowerCase() === 'teach',
+        ),
+      );
       const sentRequests = getRequestsFromResponse(requestsResult);
 
       setMySkills(ownSkills);
