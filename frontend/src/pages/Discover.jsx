@@ -142,6 +142,12 @@ function Discover() {
           apiRequest('/requests?direction=sent'),
         ]);
 
+      console.log('RAW MY SKILLS RESPONSE:', mySkillsResult);
+      console.log(
+        'PARSED MY SKILLS RESPONSE:',
+        getSkillsFromResponse(mySkillsResult),
+      );
+
       const discoveredSkills = getSkillsFromResponse(discoverResult);
 
       const ownSkills = getSkillsFromResponse(mySkillsResult);
