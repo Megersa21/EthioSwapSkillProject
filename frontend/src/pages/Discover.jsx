@@ -20,7 +20,6 @@ const POPULAR_SKILLS = [
 ];
 
 async function apiRequest(path, options = {}) {
-  // The token is used only for authentication, not for application data.
   const token = localStorage.getItem('token');
 
   if (!token) {
@@ -73,15 +72,24 @@ function getInitials(name = '') {
 }
 
 function getSkillsFromResponse(result) {
-  return Array.isArray(result?.skills) ? result.skills : [];
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.skills)) return result.skills;
+
+  throw new Error(
+    'The skills API returned an unexpected response. Please refresh and try again.',
+  );
 }
 
 function getRequestsFromResponse(result) {
-  return Array.isArray(result?.requests) ? result.requests : [];
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.requests)) return result.requests;
+
+  throw new Error(
+    'The requests API returned an unexpected response. Please refresh and try again.',
+  );
 }
 
 function getPartnerIdFromRequest(request) {
-  // A sent request's partner is the recipient.
   return request.recipient_id ?? request.recipientId;
 }
 
@@ -142,38 +150,14 @@ function Discover() {
           apiRequest('/requests?direction=sent'),
         ]);
 
-      console.log('RAW MY SKILLS RESPONSE:', mySkillsResult);
-      console.log(
-        'PARSED MY SKILLS RESPONSE:',
-        getSkillsFromResponse(mySkillsResult),
-      );
-
       const discoveredSkills = getSkillsFromResponse(discoverResult);
-
       const ownSkills = getSkillsFromResponse(mySkillsResult);
-      console.log('MY SKILLS:', ownSkills);
-
-      console.log(
-        'TEACHING SKILLS:',
-        ownSkills.filter(
-          (skill) => String(skill.skill_type).trim().toLowerCase() === 'teach',
-        ),
-      );
       const sentRequests = getRequestsFromResponse(requestsResult);
-      console.log('BEFORE SET STATE — ownSkills:', ownSkills);
 
-      setMySkills(ownSkills);
-
-      console.log('AFTER SET STATE — ownSkills:', ownSkills);
       setMySkills(ownSkills);
       setRequests(sentRequests);
-      console.log('BEFORE SET STATE — ownSkills:', ownSkills);
 
-      setMySkills(ownSkills);
-
-      console.log('AFTER SET STATE — ownSkills:', ownSkills);
-
-      // Group all database skill records into one card per member.
+      // Group other members' skill records into one card per member.
       const grouped = new Map();
 
       discoveredSkills.forEach((skill) => {
@@ -234,10 +218,6 @@ function Discover() {
         }
       });
 
-      const ownTeachSkills = ownSkills.filter(
-        (skill) => normalizeSkillType(skill.skill_type) === 'teach',
-      );
-
       const ownLearnNames = new Set(
         ownSkills
           .filter((skill) => normalizeSkillType(skill.skill_type) === 'learn')
@@ -277,9 +257,6 @@ function Discover() {
     loadDiscoverData();
   }, [loadDiscoverData]);
 
-  useEffect(() => {
-    console.log('REACT STATE — mySkills:', mySkills);
-  }, [mySkills]);
   const myTeachSkills = useMemo(
     () =>
       mySkills.filter(
@@ -337,19 +314,7 @@ function Discover() {
     setFeedback('');
     setError('');
 
-    console.log('SEND REQUEST — myTeachSkills:', myTeachSkills);
-    console.log('SEND REQUEST — count:', myTeachSkills.length);
-
-    const currentTeachSkills = mySkills.filter(
-      (skill) =>
-        String(skill.skill_type || '')
-          .trim()
-          .toLowerCase() === 'teach',
-    );
-
-    console.log('CURRENT TEACHING SKILLS:', currentTeachSkills);
-
-    if (!currentTeachSkills.length) {
+    if (!myTeachSkills.length) {
       setFeedback(
         'No teaching skills are loaded yet. Refresh Discover and try again.',
       );
@@ -376,7 +341,7 @@ function Discover() {
       return;
     }
 
-    const offeredSkill = currentTeachSkills[0];
+    const offeredSkill = myTeachSkills[0];
     const wantedSkillName = person.teaches[0];
     const wantedSkillId = person.teachSkillIds[wantedSkillName.toLowerCase()];
 
@@ -401,7 +366,6 @@ function Discover() {
 
       setFeedback(`Your request to ${person.name} was sent successfully.`);
 
-      // Reload request statuses from PostgreSQL after creating the request.
       const result = await apiRequest('/requests?direction=sent');
       setRequests(getRequestsFromResponse(result));
     } catch (requestError) {
