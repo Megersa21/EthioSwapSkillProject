@@ -322,9 +322,18 @@ function Discover() {
     console.log('SEND REQUEST — myTeachSkills:', myTeachSkills);
     console.log('SEND REQUEST — count:', myTeachSkills.length);
 
-    if (!myTeachSkills.length) {
+    const currentTeachSkills = mySkills.filter(
+      (skill) =>
+        String(skill.skill_type || '')
+          .trim()
+          .toLowerCase() === 'teach',
+    );
+
+    console.log('CURRENT TEACHING SKILLS:', currentTeachSkills);
+
+    if (!currentTeachSkills.length) {
       setFeedback(
-        'Add at least one skill you can teach in My Skills before sending a request.',
+        'No teaching skills are loaded yet. Refresh Discover and try again.',
       );
       return;
     }
@@ -349,7 +358,7 @@ function Discover() {
       return;
     }
 
-    const offeredSkill = myTeachSkills[0];
+    const offeredSkill = currentTeachSkills[0];
     const wantedSkillName = person.teaches[0];
     const wantedSkillId = person.teachSkillIds[wantedSkillName.toLowerCase()];
 
