@@ -28,9 +28,10 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import CommunityRules from './pages/CommunityRules.jsx';
 import Privacy from './pages/Privacy.jsx';
 import Contact from './pages/Contact.jsx';
+import { installSessionHandler } from './utils/sessionHandler';
 
 import './App.css';
-
+installSessionHandler();
 function App() {
   return (
     <BrowserRouter>
