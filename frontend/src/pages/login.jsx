@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '../styles/Auth.css';
 
@@ -12,6 +12,15 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const message = sessionStorage.getItem('sessionExpiredMessage');
+
+    if (message) {
+      setError(message);
+      sessionStorage.removeItem('sessionExpiredMessage');
+    }
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();

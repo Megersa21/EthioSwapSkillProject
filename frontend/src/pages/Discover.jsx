@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Footer from '../components/Footer';
+import {
+  handleExpiredSession,
+  isExpiredTokenResponse,
+} from '../utils/sessionHandler';
 import '../styles/Discover.css';
 
 const API_URL = (
@@ -38,11 +42,13 @@ async function apiRequest(path, options = {}) {
   const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
-      result.message || result.error || `Request failed (${response.status}).`,
-    );
-  }
+    if (isExpiredTokenResponse(response.status, result.message)) {
+      handleExpiredSession();
+      throw new Error('Your session has expired.');
+    }
 
+    throw new Error(result.message || `Could not load ${path}.`);
+  }
   return result;
 }
 
