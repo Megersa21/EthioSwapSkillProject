@@ -1,8 +1,10 @@
 .admin-settings-page {
   width: 100%;
   max-width: 1100px;
+  min-width: 0;
   margin: 0 auto;
   color: #172b3a;
+  text-align: left;
 }
 
 .admin-settings-heading {
@@ -42,6 +44,11 @@
   align-items: flex-start;
   gap: 14px;
   margin-bottom: 24px;
+}
+
+.admin-settings-section-heading > div,
+.admin-settings-toggle > span {
+  min-width: 0;
 }
 
 .admin-settings-icon {
@@ -220,8 +227,26 @@
 }
 
 @media (max-width: 600px) {
+  .admin-settings-heading {
+    margin-bottom: 22px;
+  }
+
   .admin-settings-card {
-    padding: 18px;
+    padding: 18px 16px;
+    border-radius: 13px;
+  }
+
+  .admin-settings-section-heading {
+    gap: 11px;
+    margin-bottom: 20px;
+  }
+
+  .admin-settings-section-heading h2 {
+    font-size: 17px;
+  }
+
+  .admin-settings-section-heading p {
+    font-size: 13px;
   }
 
   .admin-settings-actions {

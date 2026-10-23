@@ -551,17 +551,20 @@ function Discover() {
                             )}
                           </div>
 
+                          <div className="partner-card-identity">
+                            <h3>{person.name}</h3>
+                            <p className="partner-location">
+                              <span aria-hidden="true">⌖</span>{' '}
+                              {person.location}
+                            </p>
+                            <p className="partner-title">{person.title}</p>
+                          </div>
+
                           <div className="partner-match">
                             <strong>{person.match}%</strong>
                             <span>skill match</span>
                           </div>
                         </div>
-
-                        <h3>{person.name}</h3>
-                        <p className="partner-location">
-                          <span aria-hidden="true">⌖</span> {person.location}
-                        </p>
-                        <p>{person.title}</p>
 
                         <div className="partner-stats">
                           <span>Rating not available</span>

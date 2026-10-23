@@ -70,6 +70,7 @@ function AdminDashboard() {
     const params = new URLSearchParams(window.location.search);
     return params.get('section') === 'settings' ? 'Settings' : 'Dashboard';
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [currentRole, setCurrentRole] = useState('');
   const [stats, setStats] = useState(null);
@@ -286,6 +287,7 @@ function AdminDashboard() {
 
   function navigate(page) {
     setActivePage(page);
+    setMobileNavOpen(false);
     setNotice('');
     setError('');
 
@@ -592,7 +594,10 @@ function AdminDashboard() {
           </div>
 
           <div className="admin-table-wrap">
-            <table className="admin-table">
+            <table
+              className="admin-table admin-users-table"
+              aria-label="Recently registered users"
+            >
               <thead>
                 <tr>
                   <th>User</th>
@@ -604,12 +609,12 @@ function AdminDashboard() {
               <tbody>
                 {recentUsers.map((user) => (
                   <tr key={user.id}>
-                    <td className="admin-report-name">
+                    <td className="admin-report-name" data-label="User">
                       {user.full_name}
                       <small className="admin-user-id">ID: {user.id}</small>
                     </td>
-                    <td>{user.email}</td>
-                    <td>
+                    <td data-label="Email">{user.email}</td>
+                    <td data-label="Role">
                       <span
                         className={`admin-status ${statusClass(
                           user.role === 'admin' || user.role === 'super_admin'
@@ -620,7 +625,7 @@ function AdminDashboard() {
                         {user.role || 'user'}
                       </span>
                     </td>
-                    <td>{formatDate(user.created_at)}</td>
+                    <td data-label="Joined">{formatDate(user.created_at)}</td>
                   </tr>
                 ))}
                 {!loading && recentUsers.length === 0 && (
@@ -679,7 +684,10 @@ function AdminDashboard() {
           </div>
 
           <div className="admin-table-wrap">
-            <table className="admin-table">
+            <table
+              className="admin-table admin-users-table"
+              aria-label="User accounts"
+            >
               <thead>
                 <tr>
                   <th>User</th>
@@ -699,12 +707,12 @@ function AdminDashboard() {
 
                   return (
                     <tr key={user.id}>
-                      <td className="admin-report-name">
+                      <td className="admin-report-name" data-label="User">
                         {user.full_name}
                         <small className="admin-user-id">ID: {user.id}</small>
                       </td>
-                      <td>{user.email}</td>
-                      <td>
+                      <td data-label="Email">{user.email}</td>
+                      <td data-label="Role">
                         <span
                           className={`admin-status ${statusClass(
                             user.role === 'user' ? 'active' : 'reviewed',
@@ -713,15 +721,17 @@ function AdminDashboard() {
                           {user.role || 'user'}
                         </span>
                       </td>
-                      <td>
+                      <td data-label="Account status">
                         <span
                           className={`admin-status ${statusClass(accountStatus)}`}
                         >
                           {accountStatus}
                         </span>
                       </td>
-                      <td>{formatDate(user.created_at)}</td>
-                      <td>
+                      <td data-label="Joined">
+                        {formatDate(user.created_at)}
+                      </td>
+                      <td data-label="Actions">
                         {isOrdinaryUser ? (
                           <div
                             className="admin-user-actions"
@@ -786,7 +796,7 @@ function AdminDashboard() {
                       </td>
 
                       {isSuperAdmin && (
-                        <td>
+                        <td data-label="Change role">
                           <select
                             aria-label={`Change role for ${user.full_name}`}
                             value={user.role}
@@ -1032,7 +1042,7 @@ function AdminDashboard() {
 
           {!reportsLoading && filteredReports.length > 0 && (
             <div className="admin-table-wrap">
-              <table className="admin-table">
+              <table className="admin-table admin-reports-table">
                 <thead>
                   <tr>
                     <th>Report</th>
@@ -1047,7 +1057,7 @@ function AdminDashboard() {
                 <tbody>
                   {filteredReports.map((report) => (
                     <tr key={report.id}>
-                      <td>
+                      <td data-label="Report">
                         <strong>#{report.id}</strong>
                         <small className="admin-user-id">
                           {report.report_type}
@@ -1056,24 +1066,24 @@ function AdminDashboard() {
                           {formatDate(report.created_at)}
                         </small>
                       </td>
-                      <td>
+                      <td data-label="Reporter">
                         {report.reporter_name || 'Unknown'}
                         <small className="admin-user-id">
                           ID: {report.reporter_id ?? '—'}
                         </small>
                       </td>
-                      <td>
+                      <td data-label="Reported user">
                         {report.reported_user_name || 'Not specified'}
                         <small className="admin-user-id">
                           ID: {report.reported_user_id ?? '—'}
                         </small>
                       </td>
-                      <td>
+                      <td data-label="Details">
                         <div className="admin-report-description">
                           {report.description}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <select
                           value={report.status}
                           onChange={(event) =>
@@ -1091,7 +1101,7 @@ function AdminDashboard() {
                           <option value="dismissed">Dismissed</option>
                         </select>
                       </td>
-                      <td>
+                      <td data-label="Admin notes">
                         <textarea
                           value={report.admin_notes ?? ''}
                           onChange={(event) =>
@@ -1106,7 +1116,7 @@ function AdminDashboard() {
                           aria-label={`Admin notes for report ${report.id}`}
                         />
                       </td>
-                      <td>
+                      <td data-label="Action">
                         <button
                           type="button"
                           className="admin-button admin-button-review"
@@ -1163,7 +1173,7 @@ function AdminDashboard() {
 
           {!auditLoading && auditLogs.length > 0 && (
             <div className="admin-table-wrap">
-              <table className="admin-table">
+              <table className="admin-table admin-audit-table">
                 <thead>
                   <tr>
                     <th>Date and time</th>
@@ -1176,19 +1186,23 @@ function AdminDashboard() {
                 <tbody>
                   {auditLogs.map((entry) => (
                     <tr key={entry.id}>
-                      <td>{formatDate(entry.created_at)}</td>
-                      <td>
+                      <td data-label="Date and time">
+                        {formatDate(entry.created_at)}
+                      </td>
+                      <td data-label="Administrator">
                         {entry.admin_name || 'Former/unavailable account'}
                         <small className="admin-user-id">
                           {entry.admin_email || `ID: ${entry.admin_id ?? '—'}`}
                         </small>
                       </td>
-                      <td>{String(entry.action).replaceAll('_', ' ')}</td>
-                      <td>
+                      <td data-label="Action">
+                        {String(entry.action).replaceAll('_', ' ')}
+                      </td>
+                      <td data-label="Target">
                         {entry.target_type || '—'}
                         {entry.target_id != null ? ` #${entry.target_id}` : ''}
                       </td>
-                      <td>
+                      <td data-label="Details">
                         <pre className="admin-audit-details">
                           {JSON.stringify(entry.details || {}, null, 2)}
                         </pre>
@@ -1329,7 +1343,7 @@ function AdminDashboard() {
 
           {!contactLoading && contactMessages.length > 0 && (
             <div className="admin-table-wrap">
-              <table className="admin-table">
+              <table className="admin-table admin-contact-table">
                 <thead>
                   <tr>
                     <th>Sender</th>
@@ -1348,7 +1362,7 @@ function AdminDashboard() {
 
                     return (
                       <tr key={contact.id}>
-                        <td className="admin-report-name">
+                        <td className="admin-report-name" data-label="Sender">
                           {contact.name}
                           <a
                             href={`mailto:${contact.email}`}
@@ -1362,9 +1376,9 @@ function AdminDashboard() {
                           </a>
                         </td>
 
-                        <td>{contact.topic}</td>
+                        <td data-label="Topic">{contact.topic}</td>
 
-                        <td>
+                        <td data-label="Message">
                           <div
                             style={{
                               minWidth: 180,
@@ -1379,9 +1393,11 @@ function AdminDashboard() {
                           </div>
                         </td>
 
-                        <td>{formatDate(contact.created_at)}</td>
+                        <td data-label="Received">
+                          {formatDate(contact.created_at)}
+                        </td>
 
-                        <td>
+                        <td data-label="Status">
                           <span
                             className={`admin-status ${statusClass(
                               contact.status,
@@ -1391,7 +1407,7 @@ function AdminDashboard() {
                           </span>
                         </td>
 
-                        <td>
+                        <td data-label="Actions">
                           <div
                             style={{
                               display: 'flex',
@@ -1467,7 +1483,7 @@ function AdminDashboard() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="contact-details-title"
-              className="admin-panel"
+              className="admin-panel admin-contact-dialog"
               style={{
                 width: '100%',
                 maxWidth: 650,
@@ -1624,15 +1640,41 @@ function AdminDashboard() {
 
   return (
     <div className="admin-layout">
-      <aside className="admin-sidebar">
-        <div className="admin-brand">
-          <span className="admin-brand-icon" aria-hidden="true">
-            ⇄
-          </span>
-          <span>Admin</span>
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="admin-sidebar-backdrop"
+          aria-label="Close admin navigation"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      <aside
+        className={`admin-sidebar ${
+          mobileNavOpen ? 'admin-sidebar-open' : ''
+        }`}
+      >
+        <div className="admin-sidebar-header">
+          <div className="admin-brand">
+            <span className="admin-brand-icon" aria-hidden="true">
+              ⇄
+            </span>
+            <span>Admin</span>
+          </div>
+          <button
+            type="button"
+            className="admin-sidebar-close"
+            aria-label="Close admin navigation"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
         </div>
 
-        <nav className="admin-navigation">
+        <nav
+          className="admin-navigation"
+          id="admin-navigation"
+        >
           {[
             { name: 'Dashboard', icon: '▦' },
             { name: 'Users', icon: '♙' },
@@ -1662,6 +1704,19 @@ function AdminDashboard() {
       </aside>
 
       <main className="admin-main">
+        <div className="admin-mobile-bar">
+          <button
+            type="button"
+            className="admin-menu-toggle"
+            aria-label="Open admin navigation"
+            aria-expanded={mobileNavOpen}
+            aria-controls="admin-navigation"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+          <span>{activePage}</span>
+        </div>
         <div className="admin-mobile-brand">EthioSwapSkill / Admin</div>
 
         {notice && (

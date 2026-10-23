@@ -602,7 +602,9 @@ export default function Messages() {
   }
 
   return (
-    <main className="messages-page">
+    <main
+      className={`messages-page ${activeContact ? 'has-active-conversation' : ''}`}
+    >
       <header className="messages-heading">
         <div>
           <p className="messages-eyebrow">CONNECT AND LEARN</p>
@@ -724,6 +726,14 @@ export default function Messages() {
           ) : (
             <>
               <header className="chat-header">
+                <button
+                  type="button"
+                  className="chat-back-button"
+                  onClick={() => setActiveId(null)}
+                  aria-label="Back to skill partners"
+                >
+                  ‹
+                </button>
                 <ContactAvatar
                   name={activeContact.name}
                   image={activeContact.profile_image}

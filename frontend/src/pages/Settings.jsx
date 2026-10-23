@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import '../styles/Settings.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const THEME_STORAGE_KEY = 'ethioSwapSkillDarkMode';
 
 const defaultSettings = {
   messageNotifications: true,
@@ -11,6 +12,23 @@ const defaultSettings = {
   reviewNotifications: true,
   darkMode: false,
 };
+
+function getSavedDarkMode() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveDarkModePreference(enabled) {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, String(enabled));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function mapApiSettings(settings) {
   return {
@@ -104,7 +122,10 @@ function PasswordField({
 export default function Settings() {
   const navigate = useNavigate();
 
-  const [settings, setSettings] = useState(defaultSettings);
+  const [settings, setSettings] = useState(() => ({
+    ...defaultSettings,
+    darkMode: getSavedDarkMode(),
+  }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -145,10 +166,20 @@ export default function Settings() {
         }
 
         if (active && data.settings) {
-          setSettings({
+          const loadedSettings = {
             ...defaultSettings,
             ...mapApiSettings(data.settings),
+          };
+
+          setSettings({
+            ...loadedSettings,
           });
+
+          if (!saveDarkModePreference(loadedSettings.darkMode)) {
+            setError(
+              'Could not save the appearance preference in this browser.',
+            );
+          }
         }
       } catch (err) {
         if (active) {
@@ -175,7 +206,11 @@ export default function Settings() {
   function updateSetting(key, value) {
     setSettings((previous) => ({ ...previous, [key]: value }));
     setSuccess('');
-    setError('');
+    setError(
+      key === 'darkMode' && !saveDarkModePreference(value)
+        ? 'Could not save the appearance preference in this browser.'
+        : '',
+    );
   }
 
   async function saveSettings() {
@@ -207,10 +242,17 @@ export default function Settings() {
       }
 
       if (data.settings) {
-        setSettings({
+        const savedSettings = {
           ...defaultSettings,
           ...mapApiSettings(data.settings),
-        });
+        };
+        setSettings(savedSettings);
+
+        if (!saveDarkModePreference(savedSettings.darkMode)) {
+          setError(
+            'Settings were saved, but the appearance preference could not be saved in this browser.',
+          );
+        }
       }
 
       setSuccess('Your settings have been saved successfully.');
@@ -249,11 +291,16 @@ export default function Settings() {
         throw new Error(data.message || 'Could not reset your settings.');
       }
 
-      setSettings(
-        data.settings
-          ? { ...defaultSettings, ...mapApiSettings(data.settings) }
-          : defaultSettings,
-      );
+      const resetSettings = data.settings
+        ? { ...defaultSettings, ...mapApiSettings(data.settings) }
+        : defaultSettings;
+      setSettings(resetSettings);
+
+      if (!saveDarkModePreference(resetSettings.darkMode)) {
+        setError(
+          'Settings were reset, but the appearance preference could not be saved in this browser.',
+        );
+      }
 
       setSuccess('Your settings have been reset to their defaults.');
     } catch (err) {
