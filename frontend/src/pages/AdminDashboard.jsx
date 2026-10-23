@@ -4,6 +4,15 @@ import AdminSettings from './AdminSettings';
 import '../styles/AdminDashboard.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const THEME_STORAGE_KEY = 'ethioSwapSkillDarkMode';
+
+function readDarkModePreference() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'true';
+  } catch {
+    return document.documentElement.dataset.theme === 'dark';
+  }
+}
 
 function formatDate(value) {
   if (!value) return '—';
@@ -71,6 +80,7 @@ function AdminDashboard() {
     return params.get('section') === 'settings' ? 'Settings' : 'Dashboard';
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(readDarkModePreference);
 
   const [currentRole, setCurrentRole] = useState('');
   const [stats, setStats] = useState(null);
@@ -106,6 +116,18 @@ function AdminDashboard() {
   const [notice, setNotice] = useState('');
 
   const isSuperAdmin = currentRole === 'super_admin';
+
+  function toggleDarkMode() {
+    const nextDarkMode = !darkMode;
+    document.documentElement.dataset.theme = nextDarkMode ? 'dark' : 'light';
+    setDarkMode(nextDarkMode);
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, String(nextDarkMode));
+    } catch {
+      setError('Could not save the appearance preference in this browser.');
+    }
+  }
 
   // Keep the dashboard section synchronized with the URL.
   // This lets the account dropdown open the existing Settings component.
@@ -1701,6 +1723,16 @@ function AdminDashboard() {
           <span className="admin-online-dot" />
           {isSuperAdmin ? 'Super admin workspace' : 'Admin workspace'}
         </div>
+
+        <button
+          type="button"
+          className="admin-theme-toggle"
+          onClick={toggleDarkMode}
+          aria-pressed={darkMode}
+        >
+          <span aria-hidden="true">{darkMode ? '☀' : '☾'}</span>
+          {darkMode ? 'Light mode' : 'Dark mode'}
+        </button>
       </aside>
 
       <main className="admin-main">

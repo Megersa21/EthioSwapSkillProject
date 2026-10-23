@@ -36,6 +36,7 @@ html[data-theme='dark'] #root {
 html[data-theme='dark'] .site-navbar,
 html[data-theme='dark'] .navbar-inner,
 html[data-theme='dark'] .navbar-mobile-menu,
+html[data-theme='dark'] .navbar-links.navbar-links-open,
 html[data-theme='dark'] .navbar-dropdown,
 html[data-theme='dark'] .navbar-account-menu,
 html[data-theme='dark'] .dropdown-menu {
@@ -58,6 +59,53 @@ html[data-theme='dark'] .navbar-menu-toggle,
 html[data-theme='dark'] .navbar-menu-divider {
   border-color: #374151 !important;
   color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .navbar-menu-toggle,
+html[data-theme='dark'] .navbar-account-button,
+html[data-theme='dark'] .navbar-dropdown-button {
+  border-color: #4b5563 !important;
+  background-color: #263445 !important;
+  color: #f3f4f6 !important;
+}
+
+html[data-theme='dark'] .navbar-account-name,
+html[data-theme='dark'] .navbar-chevron,
+html[data-theme='dark'] .navbar-account-details strong,
+html[data-theme='dark'] .navbar-account-details small {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .navbar-dropdown-link:hover,
+html[data-theme='dark'] .navbar-link:hover,
+html[data-theme='dark'] .navbar-notification-link:hover {
+  background-color: #263445 !important;
+  color: #99f6e4 !important;
+}
+
+html[data-theme='dark'] .navbar-link-active,
+html[data-theme='dark'] .navbar-notification-active {
+  background-color: #123b3a !important;
+  color: #99f6e4 !important;
+}
+
+html[data-theme='dark'] .navbar-logout-button {
+  background-color: transparent !important;
+  color: #fda4af !important;
+}
+
+html[data-theme='dark'] .navbar-logout-button:hover {
+  background-color: #49252a !important;
+  color: #fecdd3 !important;
+}
+
+html[data-theme='dark'] .navbar-register {
+  background-color: #087f78 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme='dark'] .navbar-login {
+  color: #99f6e4 !important;
 }
 
 html[data-theme='dark'] main,
@@ -159,6 +207,23 @@ html[data-theme='dark'] .admin-layout .admin-button-neutral {
   color: #e5e7eb !important;
 }
 
+html[data-theme='dark'] .admin-layout .admin-button:not(.admin-button-review):not(.admin-button-danger):not(.admin-button-delete) {
+  border-color: #4b5563 !important;
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .admin-layout .admin-button-delete {
+  border-color: #b91c1c !important;
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+html[data-theme='dark'] .admin-layout .admin-button-delete:hover:not(:disabled) {
+  border-color: #991b1b !important;
+  background-color: #991b1b !important;
+}
+
 html[data-theme='dark'] .admin-layout .admin-button-review {
   background-color: #1b2533 !important;
   color: #5eead4 !important;
@@ -179,6 +244,37 @@ html[data-theme='dark'] .admin-layout .admin-menu-toggle {
   border-color: #374151 !important;
   background-color: #263445 !important;
   color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .admin-layout .admin-theme-toggle {
+  border-color: #4b5563 !important;
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .admin-layout .admin-theme-toggle:hover {
+  border-color: #2d8c80 !important;
+  background-color: #123b3a !important;
+  color: #99f6e4 !important;
+}
+
+html[data-theme='dark'] .dashboard-page .dashboard-stat-card strong,
+html[data-theme='dark'] .my-skills-page .my-skills-stat strong {
+  color: #f3f4f6 !important;
+}
+
+html[data-theme='dark'] .admin-settings-page .admin-settings-security-note {
+  border-color: #374151 !important;
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .admin-settings-page .admin-settings-security-note strong {
+  color: #f3f4f6 !important;
+}
+
+html[data-theme='dark'] .admin-settings-page .admin-settings-security-note p {
+  color: #cbd5e1 !important;
 }
 
 html[data-theme='dark'] main :is(section, article, aside, table, thead, tbody, tr, [class*='card'], [class*='panel'], [class*='container'], [class*='content'], [class*='list'], [class*='modal'], [class*='dialog'], [class*='sidebar'], [class*='table'], [class*='box']),
@@ -208,6 +304,42 @@ html[data-theme='dark'] [class$='-page'] a:not([class*='button']):not([class*='b
 html[data-theme='dark'] main :is(button, a):focus-visible,
 html[data-theme='dark'] [class$='-page'] :is(button, a):focus-visible {
   outline-color: #5eead4;
+}
+
+html[data-theme='dark'] .information-page {
+  background-color: #111827 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .information-content :is(.information-section-heading h2, .information-section-heading p),
+html[data-theme='dark'] .contact-info :is(h3, p, li, strong),
+html[data-theme='dark'] .contact-form :is(h3, p, label) {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .contact-info,
+html[data-theme='dark'] .contact-form {
+  border-color: #374151 !important;
+  background-color: #1b2533 !important;
+}
+
+html[data-theme='dark'] .contact-info-note {
+  border: 1px solid #374151;
+  background-color: #263445 !important;
+}
+
+html[data-theme='dark'] .contact-info-note a {
+  color: #5eead4 !important;
+}
+
+html[data-theme='dark'] .contact-form-disclaimer {
+  color: #aab7c7 !important;
+}
+
+html[data-theme='dark'] .contact-notice {
+  border-color: #785a28 !important;
+  background-color: #382f20 !important;
+  color: #fcd88a !important;
 }
 
 html[data-theme='dark'] :is(.sessions-feedback.success, .settings-success, .admin-settings-message, .discover-feedback) {
@@ -316,6 +448,23 @@ html[data-theme='dark'] .home-page .category-icon {
 html[data-theme='dark'] .home-page .category-card:hover {
   border-color: #6556a6 !important;
   background-color: #232d3b !important;
+}
+
+html[data-theme='dark'] .home-page .button-outline {
+  border-color: #64748b !important;
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .home-page .button-outline:hover {
+  border-color: #2d8c80 !important;
+  background-color: #123b3a !important;
+  color: #99f6e4 !important;
+}
+
+html[data-theme='dark'] .home-page .sample-note {
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
 }
 
 html[data-theme='light'] .live-room {

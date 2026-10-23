@@ -606,8 +606,12 @@ function Discover() {
                         </div>
 
                         <div className="partner-card-footer">
-                          <span>{person.level}</span>
-                          <span>{person.availability}</span>
+                          <span>
+                            <strong>Level:</strong> {person.level}
+                          </span>
+                          <span>
+                            <strong>Availability:</strong> {person.availability}
+                          </span>
                         </div>
 
                         <Link
