@@ -187,6 +187,7 @@ function LiveSessionRoom() {
 
       receivedStreamsRef.current.set(stream.id, stream);
 
+      // Route screen-share streams to the workspace, never the camera tile.
       if (remoteScreenStreamIdsRef.current.has(stream.id)) {
         showRemoteScreen(stream);
       } else {
@@ -211,7 +212,7 @@ function LiveSessionRoom() {
             remoteScreenStreamRef.current = null;
             setPartnerSharing(false);
 
-            if (!sharingRef.current && screenShareVideoRef.current) {
+            if (screenShareVideoRef.current) {
               screenShareVideoRef.current.srcObject = null;
             }
           }
@@ -777,7 +778,14 @@ function LiveSessionRoom() {
       screenStreamRef.current = stream;
       sharingRef.current = true;
 
-      // Add a separate sender. Do not replace the camera sender.
+      // Notify the other participant BEFORE negotiation begins.
+      // This lets their client identify the incoming stream as a screen share.
+      socket.emit('session:screen-share-start', {
+        sessionId: String(sessionId),
+        streamId: stream.id,
+      });
+
+      // Keep the screen track separate from the camera track.
       screenSenderRef.current = pc.addTrack(track, stream);
 
       if (screenShareVideoRef.current) {

@@ -2,9 +2,58 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import '../styles/PreJionSession.css';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function getUserId(user) {
+  const id = user.id ?? user.userId ?? user.user_id;
+  return id == null ? '' : String(id);
+}
+
+function formatSessionTime(session) {
+  if (!session?.scheduled_at) {
+    return 'Scheduled session';
+  }
+
+  const start = new Date(session.scheduled_at);
+
+  if (Number.isNaN(start.getTime())) {
+    return 'Scheduled session';
+  }
+
+  const duration = Number(session.duration_minutes) || 60;
+  const end = new Date(start.getTime() + duration * 60 * 1000);
+
+  const date = start.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  const startTime = start.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const endTime = end.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${date} · ${startTime} – ${endTime}`;
+}
+
 function PreJoinSession() {
   const navigate = useNavigate();
   const { sessionId } = useParams();
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -13,30 +62,150 @@ function PreJoinSession() {
   const [cameraId, setCameraId] = useState('');
   const [micId, setMicId] = useState('');
   const [speakerId, setSpeakerId] = useState('');
+
   const [cameras, setCameras] = useState([]);
   const [microphones, setMicrophones] = useState([]);
   const [speakers, setSpeakers] = useState([]);
+
   const [cameraStatus, setCameraStatus] = useState('Checking camera...');
   const [micStatus, setMicStatus] = useState('Checking microphone...');
   const [connectionStatus, setConnectionStatus] = useState(
     'Checking connection...',
   );
+
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
 
-  async function startMedia(selectedCamera = cameraId, selectedMic = micId) {
+  const [session, setSession] = useState(null);
+  const [partnerName, setPartnerName] = useState('');
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [sessionError, setSessionError] = useState('');
+
+  // Load the actual session and identify its other participant.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSession() {
+      setSessionLoading(true);
+      setSessionError('');
+
+      try {
+        if (!sessionId) {
+          throw new Error('Session ID is missing. Return to your sessions.');
+        }
+
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          throw new Error('Please log in to view this session.');
+        }
+
+        const response = await fetch(`${API_URL}/sessions`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.message || result.error || 'Could not load your session.',
+          );
+        }
+
+        const sessions = Array.isArray(result)
+          ? result
+          : result.sessions || result.data?.sessions || [];
+
+        const found = sessions.find(
+          (item) => String(item.id) === String(sessionId),
+        );
+
+        if (!found) {
+          throw new Error(
+            'This session was not found in your account. Return to Sessions and open one of your scheduled sessions.',
+          );
+        }
+
+        const user = getStoredUser();
+        const localId = getUserId(user);
+
+        const requesterId =
+          found.requester_id ?? found.requesterId ?? found.requester?.id;
+
+        const recipientId =
+          found.recipient_id ?? found.recipientId ?? found.recipient?.id;
+
+        let name = '';
+
+        if (localId && requesterId != null && String(requesterId) === localId) {
+          name =
+            found.recipient_name ||
+            found.recipientName ||
+            found.recipient?.name ||
+            '';
+        } else if (
+          localId &&
+          recipientId != null &&
+          String(recipientId) === localId
+        ) {
+          name =
+            found.requester_name ||
+            found.requesterName ||
+            found.requester?.name ||
+            '';
+        }
+
+        // Some API responses provide the partner directly.
+        if (!name) {
+          name =
+            found.partner_name ||
+            found.partnerName ||
+            found.partner?.name ||
+            '';
+        }
+
+        if (!cancelled) {
+          setSession(found);
+          setPartnerName(name);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSessionError(err.message || 'Could not load session details.');
+        }
+      } finally {
+        if (!cancelled) {
+          setSessionLoading(false);
+        }
+      }
+    }
+
+    loadSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  async function startMedia(
+    selectedCamera = cameraId,
+    selectedMic = micId,
+    enableCamera = cameraOn,
+    enableMic = micOn,
+  ) {
     try {
-      setError();
+      setError('');
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: cameraOn
+        video: enableCamera
           ? selectedCamera
             ? { deviceId: { exact: selectedCamera } }
             : true
           : false,
-        audio: micOn
+        audio: enableMic
           ? selectedMic
             ? { deviceId: { exact: selectedMic } }
             : true
@@ -47,16 +216,24 @@ function PreJoinSession() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
       }
 
-      setCameraStatus(cameraOn ? 'Camera detected' : 'Camera is off');
-      setMicStatus(micOn ? 'Microphone working' : 'Microphone is muted');
+      setCameraStatus(enableCamera ? 'Camera detected' : 'Camera is off');
+      setMicStatus(enableMic ? 'Microphone working' : 'Microphone is muted');
       setConnectionStatus('Media devices connected');
 
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const availableCameras = devices.filter((d) => d.kind === 'videoinput');
-      const availableMics = devices.filter((d) => d.kind === 'audioinput');
-      const availableSpeakers = devices.filter((d) => d.kind === 'audiooutput');
+
+      const availableCameras = devices.filter(
+        (device) => device.kind === 'videoinput',
+      );
+      const availableMics = devices.filter(
+        (device) => device.kind === 'audioinput',
+      );
+      const availableSpeakers = devices.filter(
+        (device) => device.kind === 'audiooutput',
+      );
 
       setCameras(availableCameras);
       setMicrophones(availableMics);
@@ -65,17 +242,21 @@ function PreJoinSession() {
       if (!selectedCamera && availableCameras.length) {
         setCameraId(availableCameras[0].deviceId);
       }
+
       if (!selectedMic && availableMics.length) {
         setMicId(availableMics[0].deviceId);
       }
+
       if (!speakerId && availableSpeakers.length) {
         setSpeakerId(availableSpeakers[0].deviceId);
       }
     } catch (err) {
       console.error('Media setup failed:', err);
+
       setError(
         'Could not access your camera or microphone. Check your browser permissions and device connections.',
       );
+
       setCameraStatus('Camera unavailable');
       setMicStatus('Microphone unavailable');
       setConnectionStatus('Check device permissions');
@@ -88,7 +269,7 @@ function PreJoinSession() {
       setCameraStatus('Not supported');
       setMicStatus('Not supported');
       setConnectionStatus('Unavailable');
-      return;
+      return undefined;
     }
 
     startMedia();
@@ -96,7 +277,7 @@ function PreJoinSession() {
     return () => {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-    // Start the preview once when this page opens.
+    // Initialize the device preview when this page opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -104,24 +285,14 @@ function PreJoinSession() {
     const next = !cameraOn;
     setCameraOn(next);
 
-    if (next) {
-      await startMedia(cameraId, micId);
-    } else {
-      streamRef.current?.getVideoTracks().forEach((track) => track.stop());
-      setCameraStatus('Camera is off');
-    }
+    await startMedia(cameraId, micId, next, micOn);
   }
 
   async function toggleMic() {
     const next = !micOn;
     setMicOn(next);
 
-    if (next) {
-      await startMedia(cameraId, micId);
-    } else {
-      streamRef.current?.getAudioTracks().forEach((track) => track.stop());
-      setMicStatus('Microphone is muted');
-    }
+    await startMedia(cameraId, micId, cameraOn, next);
   }
 
   async function changeCamera(event) {
@@ -138,7 +309,17 @@ function PreJoinSession() {
 
   function joinSession() {
     if (!sessionId) {
-      setError('Session ID is missing. Please return to your sessions.');
+      setError('Session ID is missing. Return to your sessions.');
+      return;
+    }
+
+    if (sessionLoading || !session) {
+      setError('Please wait until the session details finish loading.');
+      return;
+    }
+
+    if (sessionError) {
+      setError(sessionError);
       return;
     }
 
@@ -147,6 +328,34 @@ function PreJoinSession() {
 
     navigate(`/sessions/${sessionId}/live`);
   }
+
+  const initials = partnerName
+    ? partnerName
+        .trim()
+        .split(/\s+/)
+        .map((part) => part[0] || '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : '?';
+
+  const teachSkill =
+    session?.offered_skill_name ||
+    session?.offeredSkillName ||
+    session?.teach_skill ||
+    '';
+
+  const learnSkill =
+    session?.wanted_skill_name ||
+    session?.wantedSkillName ||
+    session?.learn_skill ||
+    '';
+
+  const sessionTitle =
+    teachSkill && learnSkill
+      ? `${teachSkill} ⇄ ${learnSkill}`
+      : session?.title || 'Skill-swap session';
+
   return (
     <main className="prejoin-page">
       <button
@@ -174,7 +383,7 @@ function PreJoinSession() {
               }
             />
 
-            {!cameraOn && <div className="prejoin-initials">SU</div>}
+            {!cameraOn && <div className="prejoin-initials">YOU</div>}
 
             <div className="prejoin-video-controls">
               <button
@@ -217,15 +426,36 @@ function PreJoinSession() {
 
         <aside className="prejoin-settings-card">
           <h1>Ready to join?</h1>
-          <p className="prejoin-time">Today · 4:00 PM to 5:00 PM</p>
+
+          <p className="prejoin-time">
+            {sessionLoading
+              ? 'Loading scheduled session...'
+              : sessionError
+                ? 'Session details unavailable'
+                : formatSessionTime(session)}
+          </p>
 
           <div className="prejoin-partner">
-            <div className="prejoin-partner-avatar">DA</div>
+            <div className="prejoin-partner-avatar">{initials}</div>
             <div>
-              <h2>Design ⇄ Web development</h2>
-              <p>Dawit A. · Your swap partner</p>
+              <h2>{sessionTitle}</h2>
+              <p>
+                {sessionLoading
+                  ? 'Loading your swap partner...'
+                  : sessionError
+                    ? 'Partner details unavailable'
+                    : partnerName
+                      ? `${partnerName} · Your swap partner`
+                      : 'Your scheduled swap partner'}
+              </p>
             </div>
           </div>
+
+          {sessionError && (
+            <p className="prejoin-message" role="alert">
+              {sessionError}
+            </p>
+          )}
 
           <label className="prejoin-label" htmlFor="prejoin-camera">
             Camera
@@ -282,13 +512,17 @@ function PreJoinSession() {
             ))}
           </select>
 
-          {error && <p className="prejoin-message">{error}</p>}
+          {error && (
+            <p className="prejoin-message" role="alert">
+              {error}
+            </p>
+          )}
 
           <button
             type="button"
             className="prejoin-join-button"
             onClick={joinSession}
-            disabled={joining}
+            disabled={joining || sessionLoading || !session || !!sessionError}
           >
             {joining ? 'Preparing...' : 'Join session'}
           </button>
