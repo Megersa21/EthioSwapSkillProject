@@ -1,280 +1,810 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 
-function registerSessionSocket(io) {
-  // Authenticate each Socket.IO connection using the user's JWT.
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+const ROOM_PREFIX = 'session:';
+const MAX_CHAT_LENGTH = 2000;
+const MAX_ROOM_PARTICIPANTS = 2;
 
-    if (!token) {
-      return next(new Error('Authentication required.'));
+const sessionEndTimers = new Map();
+const roomStartTimes = new Map();
+const roomEndTimes = new Map();
+const roomStarting = new Set();
+
+// Map<sessionId, Map<socketId, streamId>>
+const roomScreenSharers = new Map();
+
+function getRoomName(sessionId) {
+  return `${ROOM_PREFIX}${sessionId}`;
+}
+
+function getUserId(user) {
+  return user?.userId ?? user?.user_id ?? user?.id ?? null;
+}
+
+function getSocketUserId(socket) {
+  return String(socket.data.userId);
+}
+
+function clearRoomTimer(sessionId) {
+  const key = String(sessionId);
+  const timer = sessionEndTimers.get(key);
+
+  if (timer) {
+    clearTimeout(timer);
+    sessionEndTimers.delete(key);
+  }
+}
+
+function getRoomSockets(io, sessionId) {
+  const room = io.sockets.adapter.rooms.get(getRoomName(sessionId));
+
+  if (!room) return [];
+
+  return [...room]
+    .map((socketId) => io.sockets.sockets.get(socketId))
+    .filter(Boolean);
+}
+
+function clearRoomState(sessionId) {
+  const key = String(sessionId);
+
+  clearRoomTimer(key);
+  roomStartTimes.delete(key);
+  roomEndTimes.delete(key);
+  roomStarting.delete(key);
+  roomScreenSharers.delete(key);
+}
+
+function removeScreenSharer(sessionId, socketId) {
+  const key = String(sessionId);
+  const sharers = roomScreenSharers.get(key);
+
+  if (!sharers) return null;
+
+  const streamId = sharers.get(socketId) || null;
+
+  sharers.delete(socketId);
+
+  if (sharers.size === 0) {
+    roomScreenSharers.delete(key);
+  }
+
+  return streamId;
+}
+
+function notifyScreenShareStopped(io, sessionId, socket, streamId = null) {
+  const key = String(sessionId);
+
+  io.to(getRoomName(key)).emit('session:screen-share-stopped', {
+    sessionId: key,
+    userId: socket.data.userId,
+    fromSocketId: socket.id,
+    streamId,
+  });
+}
+
+async function checkSessionAccess(sessionId, userId) {
+  const result = await pool.query(
+    `
+      SELECT
+        s.id AS session_id,
+        s.status,
+        s.scheduled_at,
+        s.duration_minutes,
+        sr.requester_id,
+        sr.recipient_id,
+        own.full_name AS user_name,
+        partner.full_name AS partner_name
+      FROM public.sessions s
+      JOIN public.swap_requests sr
+        ON sr.id = s.swap_request_id
+      JOIN public.users own
+        ON own.id = $2
+      JOIN public.users partner
+        ON partner.id = CASE
+          WHEN sr.requester_id = $2 THEN sr.recipient_id
+          ELSE sr.requester_id
+        END
+      WHERE s.id = $1
+        AND (
+          sr.requester_id = $2
+          OR sr.recipient_id = $2
+        )
+      LIMIT 1
+    `,
+    [sessionId, userId],
+  );
+
+  if (result.rows.length === 0) {
+    return {
+      allowed: false,
+      code: 'SESSION_NOT_FOUND',
+      message: 'Session not found or you are not a participant.',
+    };
+  }
+
+  const session = result.rows[0];
+  const status = String(session.status || '').toLowerCase();
+
+  if (status === 'cancelled' || status === 'completed') {
+    return {
+      allowed: false,
+      code: 'SESSION_UNAVAILABLE',
+      message: `This session is ${status}.`,
+    };
+  }
+
+  if (!session.scheduled_at || !session.duration_minutes) {
+    return {
+      allowed: false,
+      code: 'SESSION_SCHEDULE_MISSING',
+      message: 'This session does not have a valid schedule.',
+    };
+  }
+
+  const scheduledAt = new Date(session.scheduled_at).getTime();
+
+  if (!Number.isFinite(scheduledAt)) {
+    return {
+      allowed: false,
+      code: 'SESSION_SCHEDULE_INVALID',
+      message: 'The scheduled date is invalid.',
+    };
+  }
+
+  if (Date.now() < scheduledAt) {
+    return {
+      allowed: false,
+      code: 'SESSION_NOT_STARTED',
+      message: 'You cannot enter the live room before the scheduled time.',
+      scheduledAt: new Date(scheduledAt).toISOString(),
+    };
+  }
+
+  return {
+    allowed: true,
+    session: {
+      ...session,
+      scheduledAt,
+      durationMinutes: Number(session.duration_minutes),
+    },
+  };
+}
+
+async function finishSession(io, sessionId) {
+  const key = String(sessionId);
+  const roomName = getRoomName(key);
+
+  clearRoomTimer(key);
+
+  try {
+    await pool.query(
+      `
+        UPDATE public.sessions
+        SET status = 'completed',
+            updated_at = NOW()
+        WHERE id = $1
+          AND LOWER(status) = 'scheduled'
+      `,
+      [sessionId],
+    );
+  } catch (error) {
+    console.error('Could not mark session completed:', error.message);
+  }
+
+  io.to(roomName).emit('session:ended', {
+    sessionId: key,
+    message: 'The session time has ended.',
+  });
+
+  for (const socket of getRoomSockets(io, key)) {
+    socket.leave(roomName);
+    delete socket.data.sessionId;
+    delete socket.data.userName;
+    delete socket.data.sessionRole;
+  }
+
+  clearRoomState(key);
+}
+
+function scheduleSessionEnd(io, sessionId, endsAt) {
+  const key = String(sessionId);
+
+  clearRoomTimer(key);
+
+  const delay = Math.min(Math.max(0, endsAt - Date.now()), 2147483647);
+
+  const timer = setTimeout(() => {
+    finishSession(io, key).catch((error) => {
+      console.error('Session end error:', error.message);
+    });
+  }, delay);
+
+  sessionEndTimers.set(key, timer);
+}
+
+async function startRoomIfReady(io, sessionId) {
+  const key = String(sessionId);
+
+  if (roomStartTimes.has(key) || roomStarting.has(key)) return;
+
+  const sockets = getRoomSockets(io, key);
+  const participants = new Map();
+
+  for (const socket of sockets) {
+    if (socket.data.userId != null) {
+      participants.set(String(socket.data.userId), socket);
+    }
+  }
+
+  if (participants.size < MAX_ROOM_PARTICIPANTS) return;
+
+  roomStarting.add(key);
+
+  try {
+    const firstSocket = [...participants.values()][0];
+    const access = await checkSessionAccess(key, firstSocket.data.userId);
+
+    if (!access.allowed) {
+      io.to(getRoomName(key)).emit('session:blocked', {
+        code: access.code,
+        message: access.message,
+      });
+
+      for (const socket of getRoomSockets(io, key)) {
+        socket.leave(getRoomName(key));
+        delete socket.data.sessionId;
+        delete socket.data.userName;
+        delete socket.data.sessionRole;
+      }
+
+      clearRoomState(key);
+      return;
     }
 
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const userId = decoded.userId ?? decoded.user_id;
+    const currentSockets = getRoomSockets(io, key);
+    const currentParticipants = new Set(
+      currentSockets.map((socket) => String(socket.data.userId)),
+    );
 
-      if (userId === undefined || userId === null) {
-        return next(new Error('Invalid authentication token.'));
+    if (currentParticipants.size < MAX_ROOM_PARTICIPANTS) return;
+
+    const startedAt = Date.now();
+    const endsAt = startedAt + access.session.durationMinutes * 60 * 1000;
+
+    roomStartTimes.set(key, startedAt);
+    roomEndTimes.set(key, endsAt);
+
+    scheduleSessionEnd(io, key, endsAt);
+
+    io.to(getRoomName(key)).emit('session:started', {
+      sessionId: key,
+      startedAt,
+      endsAt,
+      durationMinutes: access.session.durationMinutes,
+    });
+  } catch (error) {
+    console.error('Could not start session room:', error.message);
+
+    io.to(getRoomName(key)).emit('session:error', {
+      message: 'The server could not start this session. Please try again.',
+    });
+  } finally {
+    roomStarting.delete(key);
+  }
+}
+
+function getActiveRoom(io, socket, acknowledgement) {
+  const reply =
+    typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
+  const sessionId = socket.data.sessionId;
+
+  if (!sessionId) {
+    reply({
+      success: false,
+      message: 'You have not joined a session room.',
+    });
+    return false;
+  }
+
+  const key = String(sessionId);
+  const endsAt = roomEndTimes.get(key);
+
+  if (!roomStartTimes.has(key) || !endsAt) {
+    reply({
+      success: false,
+      message: 'The session has not started yet.',
+    });
+    return false;
+  }
+
+  if (Date.now() >= endsAt) {
+    finishSession(io, key).catch((error) => {
+      console.error('Could not end expired session:', error.message);
+    });
+
+    reply({ success: false, message: 'The session has ended.' });
+    return false;
+  }
+
+  if (!socket.rooms.has(getRoomName(key))) {
+    reply({
+      success: false,
+      message: 'You are no longer in the session room.',
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function forwardToTargetOrRoom(
+  io,
+  socket,
+  eventName,
+  payload,
+  acknowledgement,
+) {
+  const reply =
+    typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
+  if (!getActiveRoom(io, socket, reply)) return;
+
+  const sessionId = String(socket.data.sessionId);
+  const targetSocketId = payload.targetSocketId;
+
+  const forwarded = {
+    ...payload,
+    sessionId,
+    fromSocketId: socket.id,
+    userId: socket.data.userId,
+    userName: socket.data.userName || 'Participant',
+  };
+
+  delete forwarded.targetSocketId;
+
+  if (targetSocketId) {
+    const target = io.sockets.sockets.get(targetSocketId);
+
+    if (
+      !target ||
+      String(target.data.sessionId) !== sessionId ||
+      !target.rooms.has(getRoomName(sessionId))
+    ) {
+      reply({
+        success: false,
+        message: 'The target participant is not connected to this session.',
+      });
+      return;
+    }
+
+    target.emit(eventName, forwarded);
+  } else {
+    socket.to(getRoomName(sessionId)).emit(eventName, forwarded);
+  }
+
+  reply({ success: true });
+}
+
+function registerSessionSocket(io) {
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+
+      if (!token) {
+        return next(new Error('Authentication required'));
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const userId = getUserId(decoded);
+
+      if (userId == null) {
+        return next(new Error('Invalid authentication token'));
       }
 
       socket.data.userId = userId;
       next();
-    } catch (error) {
-      next(new Error('Invalid or expired token. Please log in again.'));
+    } catch {
+      next(new Error('Invalid or expired authentication token'));
     }
   });
 
   io.on('connection', (socket) => {
-    console.log(`Authenticated socket connected: ${socket.id}`);
+    socket.on('session:role-swap', (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
 
-    // Join a session only if the authenticated user is a participant.
-    socket.on('session:join', async (payload = {}, callback) => {
-      const reply = typeof callback === 'function' ? callback : () => {};
-      const sessionId = payload.sessionId;
-      const userId = socket.data.userId;
+      if (!getActiveRoom(io, socket, reply)) return;
 
-      if (
-        sessionId === undefined ||
-        sessionId === null ||
-        !/^[1-9]\d*$/.test(String(sessionId))
-      ) {
-        return reply({
-          status: 'error',
-          message: 'A valid session ID is required.',
+      const role = String(payload.role || '')
+        .trim()
+        .toLowerCase();
+
+      if (!['teacher', 'learner'].includes(role)) {
+        reply({
+          success: false,
+          message: 'A valid role is required.',
         });
+        return;
       }
 
+      socket.data.sessionRole = role;
+
+      const rolePayload = {
+        sessionId: String(socket.data.sessionId),
+        userId: socket.data.userId,
+        role,
+      };
+
+      socket
+        .to(getRoomName(socket.data.sessionId))
+        .emit('session:role-swapped', rolePayload);
+
+      reply({ success: true, role: rolePayload });
+    });
+
+    socket.on('session:join', async (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
       try {
-        const result = await pool.query(
-          `SELECT
-             s.id AS session_id,
-             s.status,
-             own.full_name AS user_name,
-             partner.full_name AS partner_name
-           FROM public.sessions s
-           JOIN public.swap_requests sr
-             ON sr.id = s.swap_request_id
-           JOIN public.users own
-             ON own.id = $2
-           JOIN public.users partner
-             ON partner.id = CASE
-               WHEN sr.requester_id = $2 THEN sr.recipient_id
-               ELSE sr.requester_id
-             END
-           WHERE s.id = $1
-             AND (
-               sr.requester_id = $2
-               OR sr.recipient_id = $2
-             )`,
-          [sessionId, userId],
-        );
+        const sessionId = Number(payload.sessionId);
 
-        if (result.rows.length === 0) {
-          return reply({
-            status: 'error',
-            message: 'Session not found or you are not a participant.',
+        if (!Number.isInteger(sessionId) || sessionId <= 0) {
+          reply({
+            success: false,
+            code: 'INVALID_SESSION_ID',
+            message: 'A valid session ID is required.',
           });
+          return;
         }
 
-        const session = result.rows[0];
+        const access = await checkSessionAccess(sessionId, socket.data.userId);
 
-        // Do not allow entry into sessions that have ended or been cancelled.
-        if (
-          ['cancelled', 'completed'].includes(
-            String(session.status).toLowerCase(),
-          )
-        ) {
-          return reply({
-            status: 'error',
-            message: 'This session is no longer available.',
+        if (!access.allowed) {
+          reply({
+            success: false,
+            code: access.code,
+            message: access.message,
+            scheduledAt: access.scheduledAt,
           });
+          return;
         }
 
-        const room = `session:${session.session_id}`;
+        // Leave an old room cleanly if this socket changes sessions.
+        if (socket.data.sessionId) {
+          const oldId = String(socket.data.sessionId);
+          const oldRoom = getRoomName(oldId);
+          const oldStreamId = removeScreenSharer(oldId, socket.id);
 
-        // Leave a previous session cleanly before joining another.
-        const previousSessionId = socket.data.sessionId;
+          if (oldStreamId) {
+            notifyScreenShareStopped(io, oldId, socket, oldStreamId);
+          }
 
-        if (
-          previousSessionId &&
-          previousSessionId !== String(session.session_id)
-        ) {
-          const previousRoom = `session:${previousSessionId}`;
-
-          socket.to(previousRoom).emit('session:participant-left', {
+          socket.to(oldRoom).emit('session:participant-left', {
             userId: socket.data.userId,
             userName: socket.data.userName,
           });
 
-          socket.leave(previousRoom);
+          socket.leave(oldRoom);
+          delete socket.data.sessionId;
+          delete socket.data.userName;
+          delete socket.data.sessionRole;
+
+          await startRoomIfReady(io, oldId);
         }
 
-        socket.join(room);
-        socket.data.sessionId = String(session.session_id);
-        socket.data.userName = session.user_name;
+        const key = String(sessionId);
+        const roomName = getRoomName(key);
+        const existingSockets = getRoomSockets(io, key);
+        const distinctUsers = new Set(
+          existingSockets.map((item) => String(item.data.userId)),
+        );
+
+        if (
+          distinctUsers.size >= MAX_ROOM_PARTICIPANTS &&
+          !distinctUsers.has(getSocketUserId(socket))
+        ) {
+          reply({
+            success: false,
+            code: 'ROOM_FULL',
+            message: 'Both participant places are already occupied.',
+          });
+          return;
+        }
+
+        await socket.join(roomName);
+
+        socket.data.sessionId = key;
+        socket.data.userName = access.session.user_name || 'Participant';
+
+        const otherSockets = getRoomSockets(io, key).filter(
+          (item) => item.id !== socket.id,
+        );
+
+        const partnerSocket = otherSockets.find(
+          (item) => String(item.data.userId) !== getSocketUserId(socket),
+        );
+
+        let partnerId = partnerSocket?.data.userId ?? null;
+        let partnerName =
+          partnerSocket?.data.userName ||
+          access.session.partner_name ||
+          'Skill-swap partner';
 
         reply({
-          status: 'success',
-          sessionId: session.session_id,
-          userId,
-          userName: session.user_name,
-          partnerName: session.partner_name,
+          success: true,
+          sessionId: key,
+          userId: socket.data.userId,
+          partnerId,
+          userName: socket.data.userName,
+          partnerName,
+          scheduledAt: new Date(access.session.scheduledAt).toISOString(),
+          started: roomStartTimes.has(key),
+          startedAt: roomStartTimes.get(key) || null,
+          endsAt: roomEndTimes.get(key) || null,
+          durationMinutes: access.session.durationMinutes,
+          partnerPresent: Boolean(partnerSocket),
         });
 
-        socket.to(room).emit('session:participant-joined', {
-          userId,
-          userName: session.user_name,
+        // Notify a joining participant about existing screen sharers,
+        // including the stream ID required to match the incoming WebRTC track.
+        const sharers = roomScreenSharers.get(key);
+
+        if (sharers) {
+          for (const [sharerSocketId, streamId] of sharers.entries()) {
+            if (sharerSocketId === socket.id) continue;
+
+            const sharerSocket = io.sockets.sockets.get(sharerSocketId);
+
+            if (sharerSocket) {
+              socket.emit('session:screen-share-started', {
+                sessionId: key,
+                userId: sharerSocket.data.userId,
+                userName: sharerSocket.data.userName || 'Participant',
+                fromSocketId: sharerSocket.id,
+                streamId,
+              });
+            }
+          }
+        }
+
+        socket.to(roomName).emit('session:participant-joined', {
+          userId: socket.data.userId,
+          userName: socket.data.userName,
         });
 
-        console.log(`User ${userId} joined session ${session.session_id}`);
+        await startRoomIfReady(io, key);
       } catch (error) {
-        console.error('Session socket join error:', error);
+        console.error('Session join error:', error.message);
 
         reply({
-          status: 'error',
+          success: false,
           message: 'Could not join the session.',
         });
       }
     });
 
-    // Send a real-time chat message to the other participant.
-    socket.on('session:chat-send', (payload = {}, callback) => {
-      const reply = typeof callback === 'function' ? callback : () => {};
-      const sessionId = socket.data.sessionId;
-      const room = `session:${sessionId}`;
+    socket.on('session:chat-send', (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
 
-      if (!sessionId || !socket.rooms.has(room)) {
-        return reply({
-          status: 'error',
-          message: 'Join an authorized session before chatting.',
-        });
+      if (!getActiveRoom(io, socket, reply)) return;
+
+      const message = String(payload.message || '').trim();
+
+      if (!message) {
+        reply({ success: false, message: 'Message cannot be empty.' });
+        return;
       }
 
-      if (typeof payload.text !== 'string' || !payload.text.trim()) {
-        return reply({
-          status: 'error',
-          message: 'Message cannot be empty.',
+      if (message.length > MAX_CHAT_LENGTH) {
+        reply({
+          success: false,
+          message: `Messages cannot exceed ${MAX_CHAT_LENGTH} characters.`,
         });
+        return;
       }
 
-      const text = payload.text.trim();
-
-      if (text.length > 2000) {
-        return reply({
-          status: 'error',
-          message: 'Messages cannot exceed 2000 characters.',
-        });
-      }
-
-      const message = {
-        id: `${Date.now()}-${socket.id}`,
-        sessionId,
-        senderId: socket.data.userId,
-        senderName: socket.data.userName,
-        text,
-        createdAt: new Date().toISOString(),
+      const messagePayload = {
+        sessionId: String(socket.data.sessionId),
+        userId: socket.data.userId,
+        userName: socket.data.userName || 'Participant',
+        message,
+        sentAt: new Date().toISOString(),
       };
 
-      socket.to(room).emit('session:chat-message', message);
-      reply({ status: 'success', message });
+      socket
+        .to(getRoomName(socket.data.sessionId))
+        .emit('session:chat-message', messagePayload);
+
+      reply({ success: true, message: messagePayload });
     });
 
-    // Forward WebRTC offers to the other participant.
-    socket.on('webrtc:offer', (payload = {}, callback) => {
-      const reply = typeof callback === 'function' ? callback : () => {};
-      const sessionId = socket.data.sessionId;
-      const room = `session:${sessionId}`;
+    socket.on('webrtc:offer', (payload = {}, acknowledgement) => {
+      if (!payload.offer) {
+        const reply =
+          typeof acknowledgement === 'function' ? acknowledgement : () => {};
+        reply({ success: false, message: 'Offer is missing.' });
+        return;
+      }
 
-      if (!sessionId || !socket.rooms.has(room) || !payload.offer) {
-        return reply({
-          status: 'error',
-          message: 'Join a session before sending a call offer.',
+      forwardToTargetOrRoom(
+        io,
+        socket,
+        'webrtc:offer',
+        {
+          offer: payload.offer,
+          targetSocketId: payload.targetSocketId,
+        },
+        acknowledgement,
+      );
+    });
+
+    socket.on('webrtc:answer', (payload = {}, acknowledgement) => {
+      if (!payload.answer) {
+        const reply =
+          typeof acknowledgement === 'function' ? acknowledgement : () => {};
+        reply({ success: false, message: 'Answer is missing.' });
+        return;
+      }
+
+      forwardToTargetOrRoom(
+        io,
+        socket,
+        'webrtc:answer',
+        {
+          answer: payload.answer,
+          targetSocketId: payload.targetSocketId,
+        },
+        acknowledgement,
+      );
+    });
+
+    socket.on('webrtc:ice-candidate', (payload = {}, acknowledgement) => {
+      if (!payload.candidate) {
+        const reply =
+          typeof acknowledgement === 'function' ? acknowledgement : () => {};
+        reply({ success: false, message: 'ICE candidate is missing.' });
+        return;
+      }
+
+      forwardToTargetOrRoom(
+        io,
+        socket,
+        'webrtc:ice-candidate',
+        {
+          candidate: payload.candidate,
+          targetSocketId: payload.targetSocketId,
+        },
+        acknowledgement,
+      );
+    });
+
+    socket.on('session:screen-share-start', (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
+      if (!getActiveRoom(io, socket, reply)) return;
+
+      const streamId = String(payload.streamId || '').trim();
+
+      if (!streamId) {
+        reply({
+          success: false,
+          message: 'Screen stream ID is required.',
+        });
+        return;
+      }
+
+      const key = String(socket.data.sessionId);
+      let sharers = roomScreenSharers.get(key);
+
+      if (!sharers) {
+        sharers = new Map();
+        roomScreenSharers.set(key, sharers);
+      }
+
+      sharers.set(socket.id, streamId);
+
+      socket.to(getRoomName(key)).emit('session:screen-share-started', {
+        sessionId: key,
+        userId: socket.data.userId,
+        userName: socket.data.userName || 'Participant',
+        fromSocketId: socket.id,
+        streamId,
+      });
+
+      reply({ success: true });
+    });
+
+    socket.on('session:screen-share-stop', (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
+      if (!getActiveRoom(io, socket, reply)) return;
+
+      const key = String(socket.data.sessionId);
+      const storedStreamId = removeScreenSharer(key, socket.id);
+      const requestedStreamId = payload.streamId
+        ? String(payload.streamId)
+        : null;
+
+      const streamId = storedStreamId || requestedStreamId;
+
+      notifyScreenShareStopped(io, key, socket, streamId);
+
+      reply({ success: true });
+    });
+
+    socket.on('session:leave', async (payload = {}, acknowledgement) => {
+      const reply =
+        typeof acknowledgement === 'function' ? acknowledgement : () => {};
+
+      const sessionId = String(
+        socket.data.sessionId || payload.sessionId || '',
+      );
+
+      if (!sessionId) {
+        reply({ success: true });
+        return;
+      }
+
+      const roomName = getRoomName(sessionId);
+      const streamId = removeScreenSharer(sessionId, socket.id);
+
+      if (streamId) {
+        socket.to(roomName).emit('session:screen-share-stopped', {
+          sessionId,
+          userId: socket.data.userId,
+          fromSocketId: socket.id,
+          streamId,
         });
       }
 
-      socket.to(room).emit('webrtc:offer', {
-        fromUserId: socket.data.userId,
-        fromUserName: socket.data.userName,
-        offer: payload.offer,
-      });
-
-      reply({ status: 'success' });
-    });
-
-    // Forward WebRTC answers to the other participant.
-    socket.on('webrtc:answer', (payload = {}, callback) => {
-      const reply = typeof callback === 'function' ? callback : () => {};
-      const sessionId = socket.data.sessionId;
-      const room = `session:${sessionId}`;
-
-      if (!sessionId || !socket.rooms.has(room) || !payload.answer) {
-        return reply({
-          status: 'error',
-          message: 'Join a session before sending a call answer.',
-        });
-      }
-
-      socket.to(room).emit('webrtc:answer', {
-        fromUserId: socket.data.userId,
-        answer: payload.answer,
-      });
-
-      reply({ status: 'success' });
-    });
-
-    // Forward ICE candidates to the other participant.
-    socket.on('webrtc:ice-candidate', (payload = {}, callback) => {
-      const reply = typeof callback === 'function' ? callback : () => {};
-      const sessionId = socket.data.sessionId;
-      const room = `session:${sessionId}`;
-
-      if (!sessionId || !socket.rooms.has(room) || !payload.candidate) {
-        return reply({
-          status: 'error',
-          message: 'Join a session before sending an ICE candidate.',
-        });
-      }
-
-      socket.to(room).emit('webrtc:ice-candidate', {
-        fromUserId: socket.data.userId,
-        candidate: payload.candidate,
-      });
-
-      reply({ status: 'success' });
-    });
-
-    // Leave the current session and notify the remaining participant.
-    socket.on('session:leave', () => {
-      const sessionId = socket.data.sessionId;
-
-      if (!sessionId) return;
-
-      const room = `session:${sessionId}`;
-
-      socket.to(room).emit('session:participant-left', {
+      socket.to(roomName).emit('session:participant-left', {
         userId: socket.data.userId,
         userName: socket.data.userName,
       });
 
-      socket.leave(room);
+      socket.leave(roomName);
 
       delete socket.data.sessionId;
       delete socket.data.userName;
+      delete socket.data.sessionRole;
+
+      reply({ success: true });
+
+      await startRoomIfReady(io, sessionId);
     });
 
-    // Handle unexpected disconnects.
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       const sessionId = socket.data.sessionId;
 
-      if (sessionId) {
-        socket.to(`session:${sessionId}`).emit('session:participant-left', {
+      if (!sessionId) return;
+
+      const key = String(sessionId);
+      const roomName = getRoomName(key);
+      const streamId = removeScreenSharer(key, socket.id);
+
+      if (streamId) {
+        socket.to(roomName).emit('session:screen-share-stopped', {
+          sessionId: key,
           userId: socket.data.userId,
-          userName: socket.data.userName,
+          fromSocketId: socket.id,
+          streamId,
         });
       }
 
-      console.log(`Socket disconnected: ${socket.id}`);
+      socket.to(roomName).emit('session:participant-left', {
+        userId: socket.data.userId,
+        userName: socket.data.userName,
+      });
+
+      if (!roomStartTimes.has(key)) {
+        await startRoomIfReady(io, key);
+      }
     });
   });
 }

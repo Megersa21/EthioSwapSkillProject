@@ -10,34 +10,42 @@ const RTC_CONFIG = {
   ],
 };
 
+const isSuccessful = (result) =>
+  result?.success === true || result?.status === 'success';
+
 function LiveSessionRoom() {
   const navigate = useNavigate();
   const { sessionId } = useParams();
 
-  // Video elements
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const screenShareVideoRef = useRef(null);
 
-  // Media streams
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const remoteScreenStreamRef = useRef(null);
+  const receivedStreamsRef = useRef(new Map());
+  const remoteScreenStreamIdsRef = useRef(new Set());
+
   const screenStreamRef = useRef(null);
   const screenSenderRef = useRef(null);
+  const cameraSenderRef = useRef(null);
   const peerConnectionRef = useRef(null);
 
-  // Connection state
   const pendingCandidatesRef = useRef([]);
   const roomJoinedRef = useRef(false);
   const offerInProgressRef = useRef(false);
   const offerPendingRef = useRef(false);
+  const makingOfferRef = useRef(false);
+  const ignoreOfferRef = useRef(false);
+  const settingRemoteAnswerRef = useRef(false);
+  const politeRef = useRef(false);
   const micOnRef = useRef(true);
   const videoOnRef = useRef(true);
   const sharingRef = useRef(false);
   const createOfferRef = useRef(null);
+  const activeRef = useRef(false);
 
-  // UI state
   const [micOn, setMicOn] = useState(true);
   const [videoOn, setVideoOn] = useState(true);
   const [sharing, setSharing] = useState(false);
@@ -66,9 +74,12 @@ function LiveSessionRoom() {
     }
   });
 
-  // Keep local media acquisition stable when React state changes.
   const ensureLocalStream = useCallback(async () => {
     if (localStreamRef.current) {
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+        localVideoRef.current.play().catch(() => {});
+      }
       return localStreamRef.current;
     }
 
@@ -110,9 +121,39 @@ function LiveSessionRoom() {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (error) {
-        console.error('Could not apply ICE candidate:', error);
+        if (!ignoreOfferRef.current) {
+          console.error('Could not apply ICE candidate:', error);
+        }
       }
     }
+  }, []);
+
+  const showRemoteScreen = useCallback((stream) => {
+    if (!stream) return;
+
+    remoteScreenStreamRef.current = stream;
+
+    if (!sharingRef.current && screenShareVideoRef.current) {
+      screenShareVideoRef.current.srcObject = stream;
+      screenShareVideoRef.current.play().catch(() => {});
+    }
+
+    setPartnerSharing(true);
+  }, []);
+
+  const showRemoteCamera = useCallback((stream) => {
+    if (!stream) return;
+
+    remoteStreamRef.current = stream;
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      remoteVideoRef.current.play().catch(() => {});
+    }
+
+    setRemoteConnected(
+      stream.getTracks().some((track) => track.readyState === 'live'),
+    );
   }, []);
 
   const createPeerConnection = useCallback(async () => {
@@ -127,7 +168,11 @@ function LiveSessionRoom() {
       const localStream = await ensureLocalStream();
 
       localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
+        const sender = pc.addTrack(track, localStream);
+
+        if (track.kind === 'video') {
+          cameraSenderRef.current = sender;
+        }
       });
     } catch (error) {
       console.error('Could not access camera or microphone:', error);
@@ -138,82 +183,54 @@ function LiveSessionRoom() {
 
     pc.ontrack = (event) => {
       const track = event.track;
-      const incomingStream = event.streams?.[0];
+      const stream = event.streams?.[0] || new MediaStream([track]);
 
-      // Screen sharing is sent as a separate video-only stream.
-      // The camera stream contains both audio and video tracks.
-      const isScreenTrack =
-        track.kind === 'video' &&
-        incomingStream &&
-        incomingStream.getAudioTracks().length === 0 &&
-        incomingStream.getVideoTracks().length > 0;
+      receivedStreamsRef.current.set(stream.id, stream);
 
-      if (isScreenTrack) {
-        if (!remoteScreenStreamRef.current) {
-          remoteScreenStreamRef.current = new MediaStream();
+      if (remoteScreenStreamIdsRef.current.has(stream.id)) {
+        showRemoteScreen(stream);
+      } else {
+        showRemoteCamera(stream);
+      }
+
+      track.onended = () => {
+        const currentStream = receivedStreamsRef.current.get(stream.id);
+
+        if (currentStream) {
+          currentStream.removeTrack(track);
         }
 
-        const screenStream = remoteScreenStreamRef.current;
+        if (remoteScreenStreamIdsRef.current.has(stream.id)) {
+          const hasLiveScreenTrack = currentStream
+            ?.getVideoTracks()
+            .some((item) => item.readyState === 'live');
 
-        if (!screenStream.getTracks().some((item) => item.id === track.id)) {
-          screenStream.addTrack(track);
-        }
+          if (!hasLiveScreenTrack) {
+            remoteScreenStreamIdsRef.current.delete(stream.id);
+            receivedStreamsRef.current.delete(stream.id);
+            remoteScreenStreamRef.current = null;
+            setPartnerSharing(false);
 
-        setPartnerSharing(true);
-
-        if (screenShareVideoRef.current && !sharing) {
-          screenShareVideoRef.current.srcObject = screenStream;
-          screenShareVideoRef.current.play().catch(() => {});
-        }
-
-        track.addEventListener(
-          'ended',
-          () => {
-            const currentScreen = remoteScreenStreamRef.current;
-
-            if (currentScreen) {
-              currentScreen
-                .getTracks()
-                .filter((item) => item.id === track.id)
-                .forEach((item) => currentScreen.removeTrack(item));
-
-              if (currentScreen.getVideoTracks().length === 0) {
-                remoteScreenStreamRef.current = null;
-                setPartnerSharing(false);
-
-                if (!sharing && screenShareVideoRef.current) {
-                  screenShareVideoRef.current.srcObject = null;
-                }
-              }
+            if (!sharingRef.current && screenShareVideoRef.current) {
+              screenShareVideoRef.current.srcObject = null;
             }
-          },
-          { once: true },
-        );
+          }
+        } else {
+          const hasLiveCameraTrack = currentStream
+            ?.getTracks()
+            .some((item) => item.readyState === 'live');
 
-        return;
-      }
-
-      // Keep the partner's camera and microphone in their own stream.
-      const remoteStream = remoteStreamRef.current || new MediaStream();
-
-      remoteStreamRef.current = remoteStream;
-
-      if (!remoteStream.getTracks().some((item) => item.id === track.id)) {
-        remoteStream.addTrack(track);
-      }
-
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(() => {});
-      }
-
-      setRemoteConnected(true);
-      setConnectionStatus('Video connected');
+          if (!hasLiveCameraTrack) {
+            setRemoteConnected(false);
+          }
+        }
+      };
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socket.connected && roomJoinedRef.current) {
         socket.emit('webrtc:ice-candidate', {
+          sessionId: String(sessionId),
           candidate: event.candidate,
         });
       }
@@ -230,7 +247,6 @@ function LiveSessionRoom() {
         pc.connectionState === 'failed' ||
         pc.connectionState === 'disconnected'
       ) {
-        setRemoteConnected(false);
         setConnectionStatus('Connection interrupted');
         setRoomNotice(
           'The video connection was interrupted. Check your network.',
@@ -240,59 +256,65 @@ function LiveSessionRoom() {
       }
     };
 
-    // If screen sharing needs renegotiation, retry once the connection
-    // returns to the stable signaling state.
-    pc.onsignalingstatechange = () => {
-      if (
-        pc.signalingState === 'stable' &&
-        offerPendingRef.current &&
-        !offerInProgressRef.current
-      ) {
-        offerPendingRef.current = false;
+    pc.onnegotiationneeded = () => {
+      if (roomJoinedRef.current) {
         createOfferRef.current?.();
       }
     };
 
     return pc;
-  }, [ensureLocalStream]);
+  }, [ensureLocalStream, sessionId, showRemoteCamera, showRemoteScreen]);
 
   const createOffer = useCallback(async () => {
     if (!roomJoinedRef.current) return;
 
-    if (offerInProgressRef.current) {
+    if (makingOfferRef.current || offerInProgressRef.current) {
+      offerPendingRef.current = true;
+      return;
+    }
+
+    const pc = await createPeerConnection();
+
+    if (pc.signalingState !== 'stable') {
       offerPendingRef.current = true;
       return;
     }
 
     try {
-      const pc = await createPeerConnection();
+      makingOfferRef.current = true;
+      offerInProgressRef.current = true;
+      offerPendingRef.current = false;
+
+      const offer = await pc.createOffer();
 
       if (pc.signalingState !== 'stable') {
         offerPendingRef.current = true;
         return;
       }
 
-      offerInProgressRef.current = true;
-      offerPendingRef.current = false;
-
-      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      socket.emit('webrtc:offer', { offer: pc.localDescription }, (result) => {
-        if (result?.status && result.status !== 'success') {
-          setRoomNotice(result.message || 'Could not establish the call.');
-        }
-      });
+      socket.emit(
+        'webrtc:offer',
+        {
+          sessionId: String(sessionId),
+          offer: pc.localDescription,
+        },
+        (result) => {
+          if (result && !isSuccessful(result)) {
+            setRoomNotice(result.message || 'Could not establish the call.');
+          }
+        },
+      );
     } catch (error) {
       console.error('Could not create offer:', error);
       setRoomNotice('Could not establish the video connection.');
     } finally {
+      makingOfferRef.current = false;
       offerInProgressRef.current = false;
     }
-  }, [createPeerConnection]);
+  }, [createPeerConnection, sessionId]);
 
-  // Keep the negotiation callback accessible to peer connection handlers
-  // without making the main socket effect restart on every render.
   createOfferRef.current = createOffer;
 
   const handleOffer = useCallback(
@@ -302,10 +324,18 @@ function LiveSessionRoom() {
       try {
         const pc = await createPeerConnection();
 
-        if (pc.signalingState !== 'stable') {
-          offerPendingRef.current = true;
-          console.warn('Offer received while another negotiation is active.');
+        const offerCollision =
+          makingOfferRef.current ||
+          (pc.signalingState !== 'stable' && !settingRemoteAnswerRef.current);
+
+        ignoreOfferRef.current = !politeRef.current && offerCollision;
+
+        if (ignoreOfferRef.current) {
           return;
+        }
+
+        if (offerCollision && politeRef.current) {
+          await Promise.all([pc.setLocalDescription({ type: 'rollback' })]);
         }
 
         await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
@@ -317,23 +347,28 @@ function LiveSessionRoom() {
 
         socket.emit(
           'webrtc:answer',
-          { answer: pc.localDescription },
+          {
+            sessionId: String(sessionId),
+            answer: pc.localDescription,
+          },
           (result) => {
-            if (result?.status && result.status !== 'success') {
+            if (result && !isSuccessful(result)) {
               setRoomNotice(result.message || 'Could not answer the call.');
             }
           },
         );
 
-        if (payload.fromUserName) {
-          setPartnerName(payload.fromUserName);
+        if (payload.fromUserName || payload.userName) {
+          setPartnerName(payload.fromUserName || payload.userName);
         }
       } catch (error) {
-        console.error('Could not answer offer:', error);
-        setRoomNotice('Could not answer the call. Please rejoin the session.');
+        console.error('Could not handle offer:', error);
+        setRoomNotice(
+          'Could not establish the video connection. Please try rejoining.',
+        );
       }
     },
-    [addPendingCandidates, createPeerConnection],
+    [addPendingCandidates, createPeerConnection, sessionId],
   );
 
   const handleAnswer = useCallback(
@@ -343,6 +378,8 @@ function LiveSessionRoom() {
       if (!pc || !payload?.answer) return;
 
       try {
+        settingRemoteAnswerRef.current = true;
+
         if (pc.signalingState !== 'have-local-offer') return;
 
         await pc.setRemoteDescription(
@@ -358,6 +395,8 @@ function LiveSessionRoom() {
       } catch (error) {
         console.error('Could not apply answer:', error);
         setRoomNotice('Could not complete the video connection.');
+      } finally {
+        settingRemoteAnswerRef.current = false;
       }
     },
     [addPendingCandidates],
@@ -376,11 +415,12 @@ function LiveSessionRoom() {
     try {
       await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
     } catch (error) {
-      console.error('Could not add ICE candidate:', error);
+      if (!ignoreOfferRef.current) {
+        console.error('Could not add ICE candidate:', error);
+      }
     }
   }, []);
 
-  // Join the room and register socket listeners.
   useEffect(() => {
     if (!sessionId) {
       setConnectionStatus('Missing session ID');
@@ -388,34 +428,68 @@ function LiveSessionRoom() {
       return undefined;
     }
 
-    if (!localStorage.getItem('token')) {
+    const token = localStorage.getItem('token');
+
+    if (!token) {
       setConnectionStatus('Not authenticated');
       setRoomNotice('Please log in before joining this session.');
       return undefined;
     }
 
     let active = true;
+    activeRef.current = true;
+
+    socket.auth = { ...(socket.auth || {}), token };
 
     function joinRoom() {
-      socket.emit('session:join', { sessionId }, (result) => {
-        if (!active) return;
+      socket.emit(
+        'session:join',
+        { sessionId: String(sessionId) },
+        async (result) => {
+          if (!active) return;
 
-        if (!result || result.status !== 'success') {
-          roomJoinedRef.current = false;
-          setRoomJoined(false);
-          setConnectionStatus('Unable to join');
-          setRoomNotice(result?.message || 'Could not join this session.');
-          return;
-        }
+          if (!isSuccessful(result)) {
+            roomJoinedRef.current = false;
+            setRoomJoined(false);
+            setConnectionStatus('Unable to join');
+            setRoomNotice(result?.message || 'Could not join this session.');
+            return;
+          }
 
-        roomJoinedRef.current = true;
-        setRoomJoined(true);
-        setConnectionStatus('Waiting for partner...');
-        setPartnerName(
-          result.partnerName || result.userName || 'Skill-swap partner',
-        );
-        setRoomNotice('You joined the session. Waiting for your partner...');
-      });
+          roomJoinedRef.current = true;
+          setRoomJoined(true);
+          setConnectionStatus('Waiting for partner...');
+          setPartnerName(
+            result.partnerName || result.userName || 'Skill-swap partner',
+          );
+          setRoomNotice('You joined the session. Waiting for your partner...');
+
+          // Deterministically assign offer-collision roles when IDs exist.
+          const localId = String(
+            result.userId ?? result.user?.id ?? currentUserId,
+          );
+          const remoteId = String(result.partnerId ?? result.partner?.id ?? '');
+
+          if (localId && remoteId) {
+            politeRef.current = localId > remoteId;
+          } else {
+            politeRef.current = false;
+          }
+
+          try {
+            await ensureLocalStream();
+
+            if (active && roomJoinedRef.current) {
+              await createPeerConnection();
+            }
+          } catch (error) {
+            console.error('Camera initialization failed:', error);
+            setRoomNotice(
+              'Camera access failed. Allow camera and microphone access in your browser.',
+            );
+          }
+        },
+      );
     }
 
     function handleConnect() {
@@ -440,7 +514,7 @@ function LiveSessionRoom() {
         `${participant?.userName || 'Your partner'} joined the session.`,
       );
 
-      // The existing participant initiates the first call.
+      // Both clients may negotiate; collision handling is in handleOffer.
       createOfferRef.current?.();
     }
 
@@ -449,6 +523,8 @@ function LiveSessionRoom() {
 
       setRemoteConnected(false);
       setPartnerSharing(false);
+      remoteScreenStreamIdsRef.current.clear();
+      receivedStreamsRef.current.clear();
 
       setRoomNotice(
         `${participant?.userName || 'Your partner'} left the session.`,
@@ -456,7 +532,8 @@ function LiveSessionRoom() {
 
       peerConnectionRef.current?.close();
       peerConnectionRef.current = null;
-
+      cameraSenderRef.current = null;
+      screenSenderRef.current = null;
       remoteStreamRef.current = null;
       remoteScreenStreamRef.current = null;
       pendingCandidatesRef.current = [];
@@ -466,13 +543,20 @@ function LiveSessionRoom() {
         remoteVideoRef.current.srcObject = null;
       }
 
-      if (screenShareVideoRef.current && !sharing) {
+      if (screenShareVideoRef.current && !sharingRef.current) {
         screenShareVideoRef.current.srcObject = null;
       }
     }
 
     function handleChatMessage(incoming) {
       if (!active || !incoming) return;
+
+      const incomingText =
+        typeof incoming.message === 'string'
+          ? incoming.message
+          : incoming.text || '';
+
+      const senderId = incoming.userId ?? incoming.senderId;
 
       setMessages((current) => {
         if (incoming.id && current.some((item) => item.id === incoming.id)) {
@@ -483,14 +567,54 @@ function LiveSessionRoom() {
           ...current,
           {
             id: incoming.id || `${Date.now()}-${Math.random()}`,
-            sender:
-              String(incoming.senderId) === currentUserId ? 'you' : 'partner',
-            senderName: incoming.senderName || 'Skill-swap partner',
-            text: incoming.text || '',
-            createdAt: incoming.createdAt || new Date().toISOString(),
+            sender: String(senderId) === currentUserId ? 'you' : 'partner',
+            senderName:
+              incoming.userName || incoming.senderName || 'Skill-swap partner',
+            text: incomingText,
+            createdAt:
+              incoming.sentAt || incoming.createdAt || new Date().toISOString(),
           },
         ];
       });
+    }
+
+    function handleScreenShareStarted(payload) {
+      if (!active || !payload?.streamId) return;
+
+      const streamId = String(payload.streamId);
+      remoteScreenStreamIdsRef.current.add(streamId);
+
+      const stream = receivedStreamsRef.current.get(streamId);
+
+      if (stream) {
+        showRemoteScreen(stream);
+      }
+
+      if (payload.userName) {
+        setPartnerName(payload.userName);
+      }
+    }
+
+    function handleScreenShareStopped(payload) {
+      if (!active) return;
+
+      const streamId = payload?.streamId ? String(payload.streamId) : null;
+
+      if (streamId) {
+        remoteScreenStreamIdsRef.current.delete(streamId);
+        receivedStreamsRef.current.delete(streamId);
+      }
+
+      const currentScreen = remoteScreenStreamRef.current;
+
+      if (!streamId || currentScreen?.id === streamId) {
+        remoteScreenStreamRef.current = null;
+        setPartnerSharing(false);
+
+        if (!sharingRef.current && screenShareVideoRef.current) {
+          screenShareVideoRef.current.srcObject = null;
+        }
+      }
     }
 
     socket.on('connect', handleConnect);
@@ -498,18 +622,19 @@ function LiveSessionRoom() {
     socket.on('session:participant-joined', handleParticipantJoined);
     socket.on('session:participant-left', handleParticipantLeft);
     socket.on('session:chat-message', handleChatMessage);
+    socket.on('session:screen-share-started', handleScreenShareStarted);
+    socket.on('session:screen-share-stopped', handleScreenShareStopped);
     socket.on('webrtc:offer', handleOffer);
     socket.on('webrtc:answer', handleAnswer);
     socket.on('webrtc:ice-candidate', handleIceCandidate);
 
     socket.connect();
 
-    if (socket.connected) {
-      joinRoom();
-    }
+    if (socket.connected) joinRoom();
 
     return () => {
       active = false;
+      activeRef.current = false;
       roomJoinedRef.current = false;
 
       socket.off('connect', handleConnect);
@@ -517,6 +642,8 @@ function LiveSessionRoom() {
       socket.off('session:participant-joined', handleParticipantJoined);
       socket.off('session:participant-left', handleParticipantLeft);
       socket.off('session:chat-message', handleChatMessage);
+      socket.off('session:screen-share-started', handleScreenShareStarted);
+      socket.off('session:screen-share-stopped', handleScreenShareStopped);
       socket.off('webrtc:offer', handleOffer);
       socket.off('webrtc:answer', handleAnswer);
       socket.off('webrtc:ice-candidate', handleIceCandidate);
@@ -528,18 +655,21 @@ function LiveSessionRoom() {
 
       peerConnectionRef.current?.close();
       peerConnectionRef.current = null;
+      cameraSenderRef.current = null;
+      screenSenderRef.current = null;
       pendingCandidatesRef.current = [];
     };
   }, [
     sessionId,
     currentUserId,
+    ensureLocalStream,
+    createPeerConnection,
     handleOffer,
     handleAnswer,
     handleIceCandidate,
-    sharing,
+    showRemoteScreen,
   ]);
 
-  // Attach streams when their corresponding video elements render.
   useEffect(() => {
     if (localVideoRef.current && localStreamRef.current) {
       localVideoRef.current.srcObject = localStreamRef.current;
@@ -560,7 +690,6 @@ function LiveSessionRoom() {
     }
   }, [sharing, partnerSharing, remoteConnected, videoOn, chatVisible]);
 
-  // Session timer.
   useEffect(() => {
     const timer = window.setInterval(() => {
       setElapsed((value) => value + 1);
@@ -570,7 +699,10 @@ function LiveSessionRoom() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Final cleanup when the component is removed.
+  useEffect(() => {
+    sharingRef.current = sharing;
+  }, [sharing]);
+
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -578,10 +710,6 @@ function LiveSessionRoom() {
       peerConnectionRef.current?.close();
     };
   }, []);
-
-  useEffect(() => {
-    sharingRef.current = sharing;
-  }, [sharing]);
 
   function formatTime(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
@@ -611,7 +739,7 @@ function LiveSessionRoom() {
   }
 
   async function toggleScreenShare() {
-    if (sharing) {
+    if (sharingRef.current) {
       await stopScreenShare();
       return;
     }
@@ -628,13 +756,13 @@ function LiveSessionRoom() {
       return;
     }
 
+    let stream;
+
     try {
       const pc = await createPeerConnection();
 
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 15, max: 30 },
-        },
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 15, max: 30 } },
         audio: false,
       });
 
@@ -647,6 +775,9 @@ function LiveSessionRoom() {
       }
 
       screenStreamRef.current = stream;
+      sharingRef.current = true;
+
+      // Add a separate sender. Do not replace the camera sender.
       screenSenderRef.current = pc.addTrack(track, stream);
 
       if (screenShareVideoRef.current) {
@@ -655,12 +786,17 @@ function LiveSessionRoom() {
       }
 
       setSharing(true);
-      setRoomNotice('Connecting the shared screen...');
+      setRoomNotice('Screen sharing started.');
+
+      socket.emit('session:screen-share-start', {
+        sessionId: String(sessionId),
+        streamId: stream.id,
+      });
 
       track.addEventListener(
         'ended',
         () => {
-          if (screenStreamRef.current) {
+          if (sharingRef.current) {
             stopScreenShare();
           }
         },
@@ -668,35 +804,50 @@ function LiveSessionRoom() {
       );
 
       await createOfferRef.current?.();
-
-      setRoomNotice('Screen sharing started.');
     } catch (error) {
       console.error('Screen sharing failed:', error);
 
-      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      const pc = peerConnectionRef.current;
+
+      if (screenSenderRef.current && pc) {
+        try {
+          pc.removeTrack(screenSenderRef.current);
+        } catch {
+          // The peer connection may already be closed.
+        }
+      }
+
+      stream?.getTracks().forEach((track) => track.stop());
       screenStreamRef.current = null;
       screenSenderRef.current = null;
+      sharingRef.current = false;
       setSharing(false);
 
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = null;
       }
 
-      if (error.name === 'NotAllowedError') {
-        setRoomNotice('Screen sharing was cancelled or permission was denied.');
-      } else {
-        setRoomNotice(
-          `Unable to share your screen: ${error.message || 'Unknown error'}`,
-        );
-      }
+      setRoomNotice(
+        error.name === 'NotAllowedError'
+          ? 'Screen sharing was cancelled or permission was denied.'
+          : `Unable to share your screen: ${error.message || 'Unknown error'}`,
+      );
     }
   }
 
   async function stopScreenShare() {
     const pc = peerConnectionRef.current;
     const sender = screenSenderRef.current;
+    const stream = screenStreamRef.current;
 
-    screenSenderRef.current = null;
+    sharingRef.current = false;
+
+    if (socket.connected && roomJoinedRef.current) {
+      socket.emit('session:screen-share-stop', {
+        sessionId: String(sessionId),
+        streamId: stream?.id || null,
+      });
+    }
 
     if (sender && pc) {
       try {
@@ -706,9 +857,8 @@ function LiveSessionRoom() {
       }
     }
 
-    const stream = screenStreamRef.current;
+    screenSenderRef.current = null;
     screenStreamRef.current = null;
-
     stream?.getTracks().forEach((track) => track.stop());
 
     setSharing(false);
@@ -717,12 +867,16 @@ function LiveSessionRoom() {
       screenShareVideoRef.current.srcObject = null;
     }
 
-    if (pc && roomJoinedRef.current) {
-      offerPendingRef.current = true;
-      await createOfferRef.current?.();
+    if (remoteScreenStreamRef.current) {
+      screenShareVideoRef.current &&
+        (screenShareVideoRef.current.srcObject = remoteScreenStreamRef.current);
     }
 
     setRoomNotice('Screen sharing stopped.');
+
+    if (pc && roomJoinedRef.current) {
+      await createOfferRef.current?.();
+    }
   }
 
   function sendMessage(event) {
@@ -736,33 +890,28 @@ function LiveSessionRoom() {
       return;
     }
 
-    socket.emit('session:chat-send', { text }, (result) => {
-      if (!result || result.status !== 'success') {
+    socket.emit('session:chat-send', { message: text }, (result) => {
+      if (!isSuccessful(result)) {
         setRoomNotice(result?.message || 'Message could not be sent.');
         return;
       }
 
       const sentMessage = result.message;
+      const sentText =
+        typeof sentMessage === 'string'
+          ? sentMessage
+          : sentMessage?.text || sentMessage?.message || text;
 
-      setMessages((current) => {
-        if (
-          sentMessage?.id &&
-          current.some((item) => item.id === sentMessage.id)
-        ) {
-          return current;
-        }
-
-        return [
-          ...current,
-          {
-            id: sentMessage?.id || `${Date.now()}-${Math.random()}`,
-            sender: 'you',
-            senderName: sentMessage?.senderName || 'You',
-            text: sentMessage?.text || text,
-            createdAt: sentMessage?.createdAt || new Date().toISOString(),
-          },
-        ];
-      });
+      setMessages((current) => [
+        ...current,
+        {
+          id: sentMessage?.id || `${Date.now()}-${Math.random()}`,
+          sender: 'you',
+          senderName: sentMessage?.senderName || 'You',
+          text: sentText,
+          createdAt: sentMessage?.createdAt || new Date().toISOString(),
+        },
+      ]);
 
       setMessage('');
     });
@@ -788,6 +937,7 @@ function LiveSessionRoom() {
 
     setIsLeaving(true);
     roomJoinedRef.current = false;
+    sharingRef.current = false;
 
     if (socket.connected) {
       socket.emit('session:leave');
@@ -803,6 +953,7 @@ function LiveSessionRoom() {
     localStreamRef.current = null;
     screenStreamRef.current = null;
     screenSenderRef.current = null;
+    cameraSenderRef.current = null;
 
     navigate(`/session-review/${sessionId}`);
   }
@@ -826,7 +977,6 @@ function LiveSessionRoom() {
           >
             ⇄
           </button>
-
           <div>
             <h1>Design ⇄ Web development</h1>
             <p>Skill swap with {partnerName}</p>
@@ -912,19 +1062,17 @@ function LiveSessionRoom() {
 
             <div className="live-participant-grid">
               <article className="live-participant partner-active">
-                {remoteConnected ? (
-                  <video
-                    ref={remoteVideoRef}
-                    className="remote-participant-video"
-                    autoPlay
-                    playsInline
-                  />
-                ) : (
+                <video
+                  ref={remoteVideoRef}
+                  className="remote-participant-video"
+                  autoPlay
+                  playsInline
+                />
+                {!remoteConnected && (
                   <div className="participant-avatar partner-avatar">
                     {initials || 'SP'}
                   </div>
                 )}
-
                 <div className="participant-caption">
                   <span className="participant-name">{partnerName}</span>
                   <span className="participant-state">
@@ -945,7 +1093,6 @@ function LiveSessionRoom() {
                 ) : (
                   <div className="participant-avatar you-avatar">You</div>
                 )}
-
                 <div className="participant-caption">
                   <span className="participant-name">You</span>
                   <span className="participant-state">
@@ -968,7 +1115,6 @@ function LiveSessionRoom() {
                 {turn === 1 ? `${formatTime(secondsLeft)} left` : '25 min'}
               </span>
             </div>
-
             <div className="turn-progress">
               <span
                 style={{
@@ -989,7 +1135,6 @@ function LiveSessionRoom() {
                 {turn === 2 ? `${formatTime(secondsLeft)} left` : '25 min'}
               </span>
             </div>
-
             <div className="plan-row wrap-up-row">
               <div>
                 <strong>Wrap-up</strong>
@@ -1022,23 +1167,17 @@ function LiveSessionRoom() {
                 {messages.map((item) => (
                   <div
                     key={item.id}
-                    className={`chat-message-row ${
-                      item.sender === 'you' ? 'chat-message-row-own' : ''
-                    }`}
+                    className={`chat-message-row ${item.sender === 'you' ? 'chat-message-row-own' : ''}`}
                   >
                     <div
-                      className={`live-chat-message ${
-                        item.sender === 'you' ? 'own-message' : ''
-                      }`}
+                      className={`live-chat-message ${item.sender === 'you' ? 'own-message' : ''}`}
                     >
                       {item.sender !== 'you' && (
                         <span className="chat-sender">
                           {item.senderName || partnerName}
                         </span>
                       )}
-
                       <span className="chat-message-text">{item.text}</span>
-
                       <time className="chat-message-time">
                         {item.createdAt
                           ? new Date(item.createdAt).toLocaleTimeString([], {
@@ -1067,7 +1206,6 @@ function LiveSessionRoom() {
                   maxLength={2000}
                   disabled={!roomJoined}
                 />
-
                 <button
                   type="submit"
                   disabled={!roomJoined || !message.trim()}
@@ -1103,7 +1241,6 @@ function LiveSessionRoom() {
           <span>{micOn ? '♩' : '×'}</span>
           {micOn ? 'Mute' : 'Unmute'}
         </button>
-
         <button
           type="button"
           className={!videoOn ? 'room-control control-off' : 'room-control'}
@@ -1112,7 +1249,6 @@ function LiveSessionRoom() {
           <span>▣</span>
           {videoOn ? 'Stop video' : 'Start video'}
         </button>
-
         <button
           type="button"
           className={sharing ? 'room-control sharing-active' : 'room-control'}
@@ -1122,7 +1258,6 @@ function LiveSessionRoom() {
           <span>▧</span>
           {sharing ? 'Stop sharing' : 'Share screen'}
         </button>
-
         <button
           type="button"
           className="room-control"
@@ -1131,16 +1266,13 @@ function LiveSessionRoom() {
           <span>▱</span>
           {chatVisible ? 'Hide chat' : 'Show chat'}
         </button>
-
         <button
           type="button"
           className="room-control swap-role-control"
           onClick={swapRoles}
         >
-          <span>⇄</span>
-          Swap roles
+          <span>⇄</span>Swap roles
         </button>
-
         <button
           type="button"
           className="room-control leave-control"
