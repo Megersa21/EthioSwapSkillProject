@@ -547,3 +547,92 @@ html[data-theme='light'] .room-notice {
   background-color: #eff6ff;
   color: #1e3a5f;
 }
+
+html[data-theme='dark'] .messages-page {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .messages-page :is(
+  .conversation-panel,
+  .chat-panel,
+  .chat-header,
+  .chat-compose,
+  .conversation-item,
+  .chat-file-attachment
+) {
+  border-color: #374151;
+  background-color: #1f2937 !important;
+}
+
+html[data-theme='dark'] .messages-page .conversation-item:hover,
+html[data-theme='dark'] .messages-page .conversation-item.active {
+  background-color: #273449 !important;
+}
+
+html[data-theme='dark'] .messages-page .chat-messages {
+  background-color: #111827 !important;
+}
+
+html[data-theme='dark'] .messages-page .chat-message {
+  border-color: #374151;
+  background-color: #263445 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .messages-page .chat-message-row.sent .chat-message {
+  border-color: #1d4ed8;
+  background-color: #1e3a5f !important;
+}
+
+html[data-theme='dark'] .messages-page :is(
+  .messages-heading h1,
+  .messages-heading p,
+  .conversation-panel-heading h2,
+  .conversation-topline strong,
+  .conversation-skill,
+  .conversation-last-message,
+  .conversation-empty,
+  .chat-person h2,
+  .chat-person p,
+  .chat-message p,
+  .chat-message-time,
+  .chat-no-selection h2,
+  .chat-no-selection p,
+  .chat-file-attachment,
+  .chat-file-attachment small
+) {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .messages-page :is(
+  .connection-status,
+  .conversation-topline small
+) {
+  color: #aab7c7 !important;
+}
+
+html[data-theme='dark'] .messages-page :is(
+  .conversation-search,
+  .chat-message-input
+) {
+  border-color: #4b5563;
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
+html[data-theme='dark'] .messages-page .chat-message-input::placeholder {
+  color: #9ca3af;
+}
+
+html[data-theme='dark'] .messages-page .chat-attach-button,
+html[data-theme='dark'] .messages-page .chat-back-button {
+  border-color: #4b5563;
+  background-color: #273449 !important;
+  color: #93c5fd !important;
+}
+
+html[data-theme='dark'] .messages-page .chat-selected-file {
+  border-color: #374151;
+  background-color: #273449 !important;
+  color: #e5e7eb !important;
+}
