@@ -326,6 +326,41 @@
   line-height: 1.6;
 }
 
+html[data-theme='dark'] .prejoin-page {
+  background: #111827 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .prejoin-page .prejoin-back,
+html[data-theme='dark'] .prejoin-page .prejoin-settings-card h1,
+html[data-theme='dark'] .prejoin-page .prejoin-partner h2,
+html[data-theme='dark'] .prejoin-page .prejoin-label,
+html[data-theme='dark'] .prejoin-page .prejoin-status-item p {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .prejoin-page .prejoin-settings-card,
+html[data-theme='dark'] .prejoin-page .prejoin-status-item {
+  border-color: #374151;
+  background-color: #1f2937 !important;
+}
+
+html[data-theme='dark'] .prejoin-page .prejoin-partner {
+  background-color: #273449 !important;
+}
+
+html[data-theme='dark'] .prejoin-page .prejoin-time,
+html[data-theme='dark'] .prejoin-page .prejoin-partner p,
+html[data-theme='dark'] .prejoin-page .prejoin-community-note {
+  color: #aab7c7 !important;
+}
+
+html[data-theme='dark'] .prejoin-page .prejoin-settings-card select {
+  border-color: #4b5563;
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
 @media (max-width: 850px) {
   .prejoin-layout {
     grid-template-columns: 1fr;

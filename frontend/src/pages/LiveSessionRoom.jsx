@@ -26,6 +26,7 @@ function LiveSessionRoom() {
   const remoteScreenStreamRef = useRef(null);
   const receivedStreamsRef = useRef(new Map());
   const remoteScreenStreamIdsRef = useRef(new Set());
+  const remoteScreenTrackIdsRef = useRef(new Set());
 
   const screenStreamRef = useRef(null);
   const screenSenderRef = useRef(null);
@@ -187,8 +188,11 @@ function LiveSessionRoom() {
 
       receivedStreamsRef.current.set(stream.id, stream);
 
-      // Route screen-share streams to the workspace, never the camera tile.
-      if (remoteScreenStreamIdsRef.current.has(stream.id)) {
+      const isScreenShare =
+        remoteScreenStreamIdsRef.current.has(stream.id) ||
+        remoteScreenTrackIdsRef.current.has(track.id);
+
+      if (isScreenShare) {
         showRemoteScreen(stream);
       } else {
         showRemoteCamera(stream);
@@ -201,13 +205,17 @@ function LiveSessionRoom() {
           currentStream.removeTrack(track);
         }
 
-        if (remoteScreenStreamIdsRef.current.has(stream.id)) {
+        if (
+          remoteScreenStreamIdsRef.current.has(stream.id) ||
+          remoteScreenTrackIdsRef.current.has(track.id)
+        ) {
           const hasLiveScreenTrack = currentStream
             ?.getVideoTracks()
             .some((item) => item.readyState === 'live');
 
           if (!hasLiveScreenTrack) {
             remoteScreenStreamIdsRef.current.delete(stream.id);
+            remoteScreenTrackIdsRef.current.delete(track.id);
             receivedStreamsRef.current.delete(stream.id);
             remoteScreenStreamRef.current = null;
             setPartnerSharing(false);
@@ -525,6 +533,7 @@ function LiveSessionRoom() {
       setRemoteConnected(false);
       setPartnerSharing(false);
       remoteScreenStreamIdsRef.current.clear();
+      remoteScreenTrackIdsRef.current.clear();
       receivedStreamsRef.current.clear();
 
       setRoomNotice(
@@ -584,11 +593,20 @@ function LiveSessionRoom() {
 
       const streamId = String(payload.streamId);
       remoteScreenStreamIdsRef.current.add(streamId);
+      if (payload.trackId) {
+        remoteScreenTrackIdsRef.current.add(String(payload.trackId));
+      }
 
       const stream = receivedStreamsRef.current.get(streamId);
 
       if (stream) {
         showRemoteScreen(stream);
+      } else if (payload.trackId) {
+        const matchingStream = [...receivedStreamsRef.current.values()].find(
+          (candidate) =>
+            candidate.getTracks().some((track) => track.id === payload.trackId),
+        );
+        if (matchingStream) showRemoteScreen(matchingStream);
       }
 
       if (payload.userName) {
@@ -600,6 +618,7 @@ function LiveSessionRoom() {
       if (!active) return;
 
       const streamId = payload?.streamId ? String(payload.streamId) : null;
+      const trackId = payload?.trackId ? String(payload.trackId) : null;
 
       if (streamId) {
         remoteScreenStreamIdsRef.current.delete(streamId);
@@ -607,8 +626,23 @@ function LiveSessionRoom() {
       }
 
       const currentScreen = remoteScreenStreamRef.current;
+      if (trackId) {
+        remoteScreenTrackIdsRef.current.delete(trackId);
+      }
+      const stoppedTrackMatches =
+        trackId &&
+        currentScreen?.getTracks().some((track) => track.id === trackId);
+      const stoppedStreamMatches =
+        streamId && currentScreen?.id === streamId;
 
-      if (!streamId || currentScreen?.id === streamId) {
+      if (
+        (!streamId && !trackId) ||
+        stoppedTrackMatches ||
+        stoppedStreamMatches
+      ) {
+        currentScreen?.getTracks().forEach((track) => {
+          remoteScreenTrackIdsRef.current.delete(track.id);
+        });
         remoteScreenStreamRef.current = null;
         setPartnerSharing(false);
 
@@ -760,12 +794,11 @@ function LiveSessionRoom() {
     let stream;
 
     try {
-      const pc = await createPeerConnection();
-
-      stream = await navigator.mediaDevices.getDisplayMedia({
+      const captureRequest = navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 15, max: 30 } },
         audio: false,
       });
+      stream = await captureRequest;
 
       const track = stream.getVideoTracks()[0];
 
@@ -775,18 +808,20 @@ function LiveSessionRoom() {
         return;
       }
 
+      const pc = await createPeerConnection();
       screenStreamRef.current = stream;
       sharingRef.current = true;
 
-      // Notify the other participant BEFORE negotiation begins.
-      // This lets their client identify the incoming stream as a screen share.
+      // Keep the screen track separate from the camera track.
+      screenSenderRef.current = pc.addTrack(track, stream);
+
+      // Register the track before sending the offer so the receiver can route it
+      // to the shared workspace instead of the camera tile.
       socket.emit('session:screen-share-start', {
         sessionId: String(sessionId),
         streamId: stream.id,
+        trackId: track.id,
       });
-
-      // Keep the screen track separate from the camera track.
-      screenSenderRef.current = pc.addTrack(track, stream);
 
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
@@ -795,11 +830,6 @@ function LiveSessionRoom() {
 
       setSharing(true);
       setRoomNotice('Screen sharing started.');
-
-      socket.emit('session:screen-share-start', {
-        sessionId: String(sessionId),
-        streamId: stream.id,
-      });
 
       track.addEventListener(
         'ended',

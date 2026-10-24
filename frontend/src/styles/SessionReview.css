@@ -497,3 +497,65 @@
   color: #7b8794;
   opacity: 1;
 }
+
+html[data-theme='dark'] .session-review-page {
+  background-color: #111827 !important;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-header,
+html[data-theme='dark'] .session-review-page .review-stat-card,
+html[data-theme='dark'] .session-review-page .review-section {
+  border-color: #374151;
+  background-color: #1f2937 !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-brand,
+html[data-theme='dark'] .session-review-page .review-back-link,
+html[data-theme='dark'] .session-review-page .review-completion h1,
+html[data-theme='dark'] .session-review-page .review-completion p,
+html[data-theme='dark'] .session-review-page .review-stat-card strong,
+html[data-theme='dark'] .session-review-page .review-stat-card span,
+html[data-theme='dark'] .session-review-page .review-section h2,
+html[data-theme='dark'] .session-review-page .review-confirm-row,
+html[data-theme='dark'] .session-review-page .review-confirm-row strong,
+html[data-theme='dark'] .session-review-page .review-form label,
+html[data-theme='dark'] .session-review-page .report-form p {
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-confirm-row {
+  background-color: #273449 !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-form textarea,
+html[data-theme='dark'] .session-review-page .report-form select {
+  border-color: #4b5563;
+  background-color: #111827 !important;
+  color: #f3f4f6 !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-form textarea::placeholder {
+  color: #9ca3af;
+}
+
+html[data-theme='dark'] .session-review-page .review-tag {
+  border-color: #4b5563;
+  background-color: #273449;
+  color: #e5e7eb !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-tag.selected {
+  border-color: #0b817a;
+  background-color: #123b3a;
+  color: #99f6e4 !important;
+}
+
+html[data-theme='dark'] .session-review-page .review-secondary-button {
+  color: #5eead4;
+}
+
+html[data-theme='dark'] .session-review-page .review-finished-note {
+  background-color: #123b3a;
+  color: #99f6e4;
+}

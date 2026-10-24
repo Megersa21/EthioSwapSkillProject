@@ -61,7 +61,7 @@ function removeScreenSharer(sessionId, socketId) {
 
   if (!sharers) return null;
 
-  const streamId = sharers.get(socketId) || null;
+  const share = sharers.get(socketId) || null;
 
   sharers.delete(socketId);
 
@@ -69,17 +69,18 @@ function removeScreenSharer(sessionId, socketId) {
     roomScreenSharers.delete(key);
   }
 
-  return streamId;
+  return share;
 }
 
-function notifyScreenShareStopped(io, sessionId, socket, streamId = null) {
+function notifyScreenShareStopped(io, sessionId, socket, share = null) {
   const key = String(sessionId);
 
   io.to(getRoomName(key)).emit('session:screen-share-stopped', {
     sessionId: key,
     userId: socket.data.userId,
     fromSocketId: socket.id,
-    streamId,
+    streamId: share?.streamId || null,
+    trackId: share?.trackId || null,
   });
 }
 
@@ -476,10 +477,10 @@ function registerSessionSocket(io) {
         if (socket.data.sessionId) {
           const oldId = String(socket.data.sessionId);
           const oldRoom = getRoomName(oldId);
-          const oldStreamId = removeScreenSharer(oldId, socket.id);
+          const oldShare = removeScreenSharer(oldId, socket.id);
 
-          if (oldStreamId) {
-            notifyScreenShareStopped(io, oldId, socket, oldStreamId);
+          if (oldShare) {
+            notifyScreenShareStopped(io, oldId, socket, oldShare);
           }
 
           socket.to(oldRoom).emit('session:participant-left', {
@@ -553,7 +554,7 @@ function registerSessionSocket(io) {
         const sharers = roomScreenSharers.get(key);
 
         if (sharers) {
-          for (const [sharerSocketId, streamId] of sharers.entries()) {
+          for (const [sharerSocketId, share] of sharers.entries()) {
             if (sharerSocketId === socket.id) continue;
 
             const sharerSocket = io.sockets.sockets.get(sharerSocketId);
@@ -564,7 +565,8 @@ function registerSessionSocket(io) {
                 userId: sharerSocket.data.userId,
                 userName: sharerSocket.data.userName || 'Participant',
                 fromSocketId: sharerSocket.id,
-                streamId,
+                streamId: share.streamId,
+                trackId: share.trackId,
               });
             }
           }
@@ -689,6 +691,7 @@ function registerSessionSocket(io) {
       if (!getActiveRoom(io, socket, reply)) return;
 
       const streamId = String(payload.streamId || '').trim();
+      const trackId = String(payload.trackId || '').trim();
 
       if (!streamId) {
         reply({
@@ -706,7 +709,7 @@ function registerSessionSocket(io) {
         roomScreenSharers.set(key, sharers);
       }
 
-      sharers.set(socket.id, streamId);
+      sharers.set(socket.id, { streamId, trackId });
 
       socket.to(getRoomName(key)).emit('session:screen-share-started', {
         sessionId: key,
@@ -714,6 +717,7 @@ function registerSessionSocket(io) {
         userName: socket.data.userName || 'Participant',
         fromSocketId: socket.id,
         streamId,
+        trackId,
       });
 
       reply({ success: true });
@@ -726,14 +730,15 @@ function registerSessionSocket(io) {
       if (!getActiveRoom(io, socket, reply)) return;
 
       const key = String(socket.data.sessionId);
-      const storedStreamId = removeScreenSharer(key, socket.id);
+      const storedShare = removeScreenSharer(key, socket.id);
       const requestedStreamId = payload.streamId
         ? String(payload.streamId)
         : null;
+      const share =
+        storedShare ||
+        (requestedStreamId ? { streamId: requestedStreamId } : null);
 
-      const streamId = storedStreamId || requestedStreamId;
-
-      notifyScreenShareStopped(io, key, socket, streamId);
+      notifyScreenShareStopped(io, key, socket, share);
 
       reply({ success: true });
     });
@@ -752,14 +757,15 @@ function registerSessionSocket(io) {
       }
 
       const roomName = getRoomName(sessionId);
-      const streamId = removeScreenSharer(sessionId, socket.id);
+      const share = removeScreenSharer(sessionId, socket.id);
 
-      if (streamId) {
+      if (share) {
         socket.to(roomName).emit('session:screen-share-stopped', {
           sessionId,
           userId: socket.data.userId,
           fromSocketId: socket.id,
-          streamId,
+          streamId: share.streamId,
+          trackId: share.trackId,
         });
       }
 
@@ -786,14 +792,15 @@ function registerSessionSocket(io) {
 
       const key = String(sessionId);
       const roomName = getRoomName(key);
-      const streamId = removeScreenSharer(key, socket.id);
+      const share = removeScreenSharer(key, socket.id);
 
-      if (streamId) {
+      if (share) {
         socket.to(roomName).emit('session:screen-share-stopped', {
           sessionId: key,
           userId: socket.data.userId,
           fromSocketId: socket.id,
-          streamId,
+          streamId: share.streamId,
+          trackId: share.trackId,
         });
       }
 

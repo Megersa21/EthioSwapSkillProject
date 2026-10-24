@@ -498,6 +498,11 @@ html[data-theme='light'] .room-control.leave-control {
   color: #ffffff;
 }
 
+html[data-theme='light'] .room-control.leave-control {
+  border-color: #bd281f;
+  background-color: #c7251b;
+}
+
 html[data-theme='light'] .shared-screen,
 html[data-theme='light'] .live-participant,
 html[data-theme='light'] .room-panel {

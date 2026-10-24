@@ -177,16 +177,16 @@
 .screen-share-heading button {
   min-height: 36px;
   padding: 0 15px;
-  border: 1px solid #314b62;
+  border: 1px solid var(--room-teal);
   border-radius: 11px;
-  background: #182d42;
-  color: var(--room-text);
+  background: var(--room-teal);
+  color: #fff;
   font-size: 12px;
   font-weight: 700;
 }
 
 .screen-share-heading button:hover {
-  background: #223c52;
+  background: #096b65;
 }
 
 /* =========================
